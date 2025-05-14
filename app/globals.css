@@ -1,0 +1,233 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --gold-primary: 45 100% 50%;
+  --gold-secondary: 45 100% 60%;
+  --gold-accent: 45 100% 70%;
+  --gold-muted: 45 60% 40%;
+  --gold-foreground: 45 10% 90%;
+
+  --background: 0 0% 0%;
+  --foreground: 0 0% 100%;
+
+  --card: 240 10% 4%;
+  --card-foreground: 0 0% 100%;
+
+  --popover: 240 10% 4%;
+  --popover-foreground: 0 0% 100%;
+
+  --primary: var(--gold-primary);
+  --primary-foreground: 0 0% 0%;
+
+  --secondary: 240 4% 16%;
+  --secondary-foreground: 0 0% 100%;
+
+  --muted: 240 4% 16%;
+  --muted-foreground: 240 5% 65%;
+
+  --accent: 240 4% 16%;
+  --accent-foreground: var(--gold-primary);
+
+  --destructive: 0 100% 50%;
+  --destructive-foreground: 0 0% 100%;
+
+  --border: 240 4% 16%;
+  --input: 240 4% 16%;
+  --ring: var(--gold-primary);
+
+  --radius: 0.5rem;
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+  body {
+    @apply bg-background text-foreground;
+  }
+}
+
+/* Custom Animations */
+@keyframes float {
+  0% {
+    transform: translateY(0px);
+  }
+  50% {
+    transform: translateY(-20px);
+  }
+  100% {
+    transform: translateY(0px);
+  }
+}
+
+@keyframes rotate-slow {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.animate-float {
+  animation: float 6s ease-in-out infinite;
+}
+
+.animate-rotate-slow {
+  animation: rotate-slow 20s linear infinite;
+}
+
+/* Custom Scrollbar */
+::-webkit-scrollbar {
+  width: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: rgba(0, 0, 0, 0.3);
+}
+
+::-webkit-scrollbar-thumb {
+  background: hsla(45, 100%, 50%, 0.5);
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: hsla(45, 100%, 50%, 0.7);
+}
+
+/* Glass Effect */
+.glass {
+  background: rgba(0, 0, 0, 0.5);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  border: 1px solid rgba(255, 215, 0, 0.2);
+}
+
+.glass-dark {
+  background: rgba(10, 10, 10, 0.7);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  border: 1px solid rgba(255, 215, 0, 0.1);
+}
+
+/* Gold Text Gradient */
+.gold-gradient-text {
+  background: linear-gradient(to right, #ffd700, #ffaa00);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  display: inline-block;
+}
+
+/* Gold Border Glow */
+.gold-border-glow {
+  box-shadow: 0 0 10px 2px hsla(45, 100%, 50%, 0.3);
+}
+
+/* 3D Card Effect */
+.card-3d {
+  transform-style: preserve-3d;
+  transition: transform 0.5s ease;
+}
+
+.card-3d:hover {
+  transform: translateZ(10px) rotateX(2deg) rotateY(2deg);
+}
+
+/* NFT Card Hover Effect */
+.nft-card {
+  transition: all 0.3s ease;
+}
+
+.nft-card:hover {
+  transform: translateY(-10px);
+  box-shadow: 0 10px 20px rgba(255, 215, 0, 0.2);
+}
+
+/* Button Hover Effect */
+.btn-hover-effect {
+  position: relative;
+  overflow: hidden;
+}
+
+.btn-hover-effect:after {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: -100%;
+  width: 100%;
+  height: 100%;
+  background: linear-gradient(90deg, transparent, rgba(255, 215, 0, 0.2), transparent);
+  transition: 0.5s;
+}
+
+.btn-hover-effect:hover:after {
+  left: 100%;
+}
+
+@keyframes pulse-gold {
+  0% {
+    box-shadow: 0 0 0 0 rgba(255, 215, 0, 0.4);
+  }
+  70% {
+    box-shadow: 0 0 0 10px rgba(255, 215, 0, 0);
+  }
+  100% {
+    box-shadow: 0 0 0 0 rgba(255, 215, 0, 0);
+  }
+}
+
+.animate-pulse-gold {
+  animation: pulse-gold 2s infinite;
+}
+
+/* Custom styling for wallet button */
+.wallet-adapter-button {
+  transition: all 0.3s ease !important;
+}
+
+.custom-wallet-button-large .wallet-adapter-button {
+  height: auto !important;
+  padding: 0.75rem 1.5rem !important;
+  font-size: 1.125rem !important;
+}
+
+/* Custom wallet button styling */
+.wallet-adapter-button {
+  background: linear-gradient(to right, #ffa500, #ffd700) !important;
+  color: black !important;
+  font-weight: bold !important;
+  border-radius: 0.5rem !important;
+  border: 1px solid rgba(255, 215, 0, 0.3) !important;
+  box-shadow: 0 4px 6px -1px rgba(255, 215, 0, 0.1), 0 2px 4px -1px rgba(255, 215, 0, 0.06) !important;
+  transition: all 0.2s ease !important;
+}
+
+.wallet-adapter-button:hover {
+  background: linear-gradient(to right, #ff9500, #ffcc00) !important;
+  box-shadow: 0 10px 15px -3px rgba(255, 215, 0, 0.1), 0 4px 6px -2px rgba(255, 215, 0, 0.05) !important;
+  transform: translateY(-1px) !important;
+}
+
+.wallet-adapter-button:active {
+  transform: translateY(1px) !important;
+}
+
+.wallet-adapter-button-trigger {
+  background: linear-gradient(to right, #ffa500, #ffd700) !important;
+}
+
+.wallet-adapter-modal-wrapper {
+  background: rgba(0, 0, 0, 0.9) !important;
+  border: 1px solid rgba(255, 215, 0, 0.2) !important;
+}
+
+.wallet-adapter-modal-button-close {
+  background: rgba(255, 215, 0, 0.1) !important;
+}
+
+.wallet-adapter-modal-title {
+  color: #ffd700 !important;
+}
