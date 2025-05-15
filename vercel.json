@@ -1,11 +1,10 @@
 {
   "version": 2,
-  "builds": [
-    {
-      "src": "package.json",
-      "use": "@vercel/next"
-    }
-  ],
+  "framework": "nextjs",
+  "buildCommand": "npm run build",
+  "installCommand": "npm install --legacy-peer-deps",
+  "devCommand": "npm run dev",
+  "outputDirectory": ".next",
   "routes": [
     {
       "src": "/(.*)",
@@ -14,11 +13,5 @@
   ],
   "env": {
     "NODE_ENV": "production"
-  },
-  "build": {
-    "env": {
-      "NODE_ENV": "production"
-    }
-  },
-  "installCommand": "npm install"
+  }
 }
