@@ -2,289 +2,364 @@
 
 import { useState, useEffect } from "react"
 import { useWallet } from "@solana/wallet-adapter-react"
-import { Loader2, AlertCircle, CheckCircle } from "lucide-react"
-import { stakeTokens, getStakingRewards } from "@/utils/jupiter"
-import { useTheme } from "@/components/WalletContextProvider"
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { useStaking } from "@/hooks/useStaking"
+import { useWalletBalance } from "@/hooks/useWalletBalance"
 import { useToast } from "@/components/ui/use-toast"
-import { Progress } from "@/components/ui/progress"
+import { motion, AnimatePresence } from "framer-motion"
+import { GOLD_TOKEN } from "@/constants/tokens"
+import { ArrowUpIcon, ArrowDownIcon, CoinsIcon } from "lucide-react"
 
-// Mock staking pools
-const STAKING_POOLS = [
-  {
-    id: "pool1",
-    name: "GOLD Staking",
-    token: "GOLD",
-    apy: 12.5,
-    totalStaked: 1250000,
-    lockPeriod: 0, // 0 means flexible
-  },
-  {
-    id: "pool2",
-    name: "SOL Staking",
-    token: "SOL",
-    apy: 6.2,
-    totalStaked: 50000,
-    lockPeriod: 0,
-  },
-  {
-    id: "pool3",
-    name: "GOLD 30-Day Lock",
-    token: "GOLD",
-    apy: 18.5,
-    totalStaked: 750000,
-    lockPeriod: 30,
-  },
-  {
-    id: "pool4",
-    name: "SOL 30-Day Lock",
-    token: "SOL",
-    apy: 9.8,
-    totalStaked: 25000,
-    lockPeriod: 30,
-  },
-]
+// Constants
+const STAKING_PROGRAM_ID = "99SzC9waY86s9JRPYJ9Fw9K6YVziw9L9z8L95WQWv7wn"
+const STAKING_POOL_MINT = "Gh9Ly5t8LzVtdWq2rM3W5qTW52wX68yQ6rXdi9999999"
+const STAKING_POOL_ATA = "9999999999999999999999999999999999999999999999999999999999999999"
+const TREASURY_ATA = "9999999999999999999999999999999999999999999999999999999999999999"
 
-export default function StakingInterface() {
+export function StakingInterface() {
   const { connected, publicKey } = useWallet()
-  const { theme } = useTheme()
   const { toast } = useToast()
-  const isDarkTheme = theme === "dark"
+  const { balances } = useWalletBalance()
+  const {
+    stakedAmount,
+    pendingRewards,
+    apy,
+    isStaking,
+    isUnstaking,
+    isClaimingRewards,
+    stakeTokens,
+    unstakeTokens,
+    claimRewards,
+    refreshStakingData,
+    formattedTimeRemaining,
+    isLoading,
+    timeRemaining,
+  } = useStaking()
 
-  const [selectedPool, setSelectedPool] = useState(STAKING_POOLS[0].id)
-  const [amount, setAmount] = useState("")
-  const [isStaking, setIsStaking] = useState(false)
-  const [isLoading, setIsLoading] = useState(false)
-  const [rewards, setRewards] = useState<{ token: string; amount: string }[]>([])
-  const [error, setError] = useState("")
+  const [stakeAmount, setStakeAmount] = useState("")
+  const [unstakeAmount, setUnstakeAmount] = useState("")
+  const [activeTab, setActiveTab] = useState("stake")
 
-  // Get the selected pool details
-  const pool = STAKING_POOLS.find((p) => p.id === selectedPool) || STAKING_POOLS[0]
+  const maxStakeAmount = balances[GOLD_TOKEN.symbol] || 0
+  const maxUnstakeAmount = stakedAmount
 
-  useEffect(() => {
-    if (connected && publicKey) {
-      fetchRewards()
-    }
-  }, [connected, publicKey])
-
-  const fetchRewards = async () => {
-    if (!connected || !publicKey) return
-
-    setIsLoading(true)
-    try {
-      const rewardsData = await getStakingRewards(publicKey.toString())
-      setRewards(rewardsData)
-    } catch (error) {
-      console.error("Error fetching staking rewards:", error)
-    } finally {
-      setIsLoading(false)
-    }
+  const handleStakeMaxClick = () => {
+    setStakeAmount(maxStakeAmount.toString())
   }
 
-  const handleAmountChange = (value: string) => {
-    // Only allow numbers and decimals
-    if (value === "" || /^\d*\.?\d*$/.test(value)) {
-      setAmount(value)
-    }
+  const handleUnstakeMaxClick = () => {
+    setUnstakeAmount(maxUnstakeAmount.toString())
   }
 
   const handleStake = async () => {
-    if (!connected || !publicKey) {
+    if (!publicKey || !stakeAmount || Number.parseFloat(stakeAmount) <= 0) {
       toast({
-        title: "Wallet not connected",
-        description: "Please connect your wallet to continue",
         variant: "destructive",
+        title: "Error",
+        description: "Please enter a valid amount to stake.",
       })
       return
     }
 
-    if (!amount || Number.parseFloat(amount) <= 0) {
-      setError("Please enter a valid amount")
-      return
-    }
-
-    setIsStaking(true)
-    setError("")
-
+    const amount = Number.parseFloat(stakeAmount)
     try {
-      const result = await stakeTokens({
-        pool: selectedPool,
-        token: pool.token,
-        amount,
-      })
-
-      if (result.success) {
-        toast({
-          title: "Staking Successful",
-          description: `You have staked ${amount} ${pool.token} in ${pool.name}`,
-          variant: "default",
-        })
-        setAmount("")
-        fetchRewards()
-      } else {
-        throw new Error(result.error || "Staking operation failed")
-      }
-    } catch (err) {
-      console.error("Staking error:", err)
-      setError(err.message || "Failed to stake tokens. Please try again.")
+      await stakeTokens(amount)
+      setStakeAmount("")
       toast({
-        title: "Staking Failed",
-        description: err.message || "Failed to stake tokens. Please try again.",
-        variant: "destructive",
+        title: "Stake Successful",
+        description: `Successfully staked ${amount} GOLD.`,
       })
-    } finally {
-      setIsStaking(false)
+    } catch (error: any) {
+      console.error("Stake failed:", error)
+      toast({
+        variant: "destructive",
+        title: "Stake Failed",
+        description: error.message || "An error occurred while staking.",
+      })
     }
   }
 
-  const handleClaim = async () => {
-    toast({
-      title: "Rewards Claimed",
-      description: "Your staking rewards have been claimed successfully",
-      variant: "default",
-    })
-    fetchRewards()
+  const handleUnstake = async () => {
+    if (!publicKey || !unstakeAmount || Number.parseFloat(unstakeAmount) <= 0) {
+      toast({
+        variant: "destructive",
+        title: "Error",
+        description: "Please enter a valid amount to unstake.",
+      })
+      return
+    }
+
+    const amount = Number.parseFloat(unstakeAmount)
+    try {
+      await unstakeTokens(amount)
+      setUnstakeAmount("")
+      toast({
+        title: "Unstake Successful",
+        description: `Successfully unstaked ${amount} GOLD.`,
+      })
+    } catch (error: any) {
+      console.error("Unstake failed:", error)
+      toast({
+        variant: "destructive",
+        title: "Unstake Failed",
+        description: error.message || "An error occurred while unstaking.",
+      })
+    }
   }
+
+  const handleClaimRewards = async () => {
+    try {
+      await claimRewards()
+      toast({
+        title: "Claim Successful",
+        description: `Successfully claimed ${pendingRewards} GOLD rewards.`,
+      })
+    } catch (error: any) {
+      console.error("Claim failed:", error)
+      toast({
+        variant: "destructive",
+        title: "Claim Failed",
+        description: error.message || "An error occurred while claiming rewards.",
+      })
+    }
+  }
+
+  useEffect(() => {
+    refreshStakingData()
+  }, [refreshStakingData])
+
+  useEffect(() => {
+    const intervalId = setInterval(() => {
+      refreshStakingData()
+    }, 10000)
+
+    return () => clearInterval(intervalId)
+  }, [refreshStakingData])
 
   return (
-    <div
-      className={`p-6 rounded-xl ${isDarkTheme ? "bg-gray-900 border border-gray-800" : "bg-white border border-gray-200"} shadow-lg`}
-    >
-      <h2 className="text-xl font-bold text-center mb-6 bg-gradient-to-r from-amber-500 to-yellow-500 bg-clip-text text-transparent">
-        Staking
-      </h2>
-
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-        <div>
-          <h3 className={`font-medium mb-4 ${isDarkTheme ? "text-white" : "text-gray-900"}`}>Stake Tokens</h3>
-
-          <div className="space-y-4">
-            <div>
-              <label className={`text-sm ${isDarkTheme ? "text-gray-400" : "text-gray-500"} mb-1 block`}>
-                Staking Pool
-              </label>
-              <Select value={selectedPool} onValueChange={setSelectedPool}>
-                <SelectTrigger className={isDarkTheme ? "bg-gray-800 border-gray-700" : "bg-white border-gray-300"}>
-                  <SelectValue placeholder="Select pool" />
-                </SelectTrigger>
-                <SelectContent className={isDarkTheme ? "bg-gray-800 border-gray-700" : "bg-white border-gray-300"}>
-                  {STAKING_POOLS.map((pool) => (
-                    <SelectItem key={pool.id} value={pool.id}>
-                      {pool.name} - {pool.apy}% APY
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+    <Card className="w-full max-w-md mx-auto bg-black border border-gold-500/20">
+      <CardHeader className="pb-4">
+        <CardTitle className="text-xl text-gold-500">GOLD Staking</CardTitle>
+      </CardHeader>
+      <CardContent className="space-y-6">
+        <div className="grid grid-cols-2 gap-4">
+          <div className="bg-gray-900 rounded-lg p-4">
+            <div className="text-sm text-gray-400 mb-1">Staked GOLD</div>
+            <div className="text-xl font-bold text-gold-500">
+              <AnimatePresence mode="wait">
+                <motion.div
+                  key={stakedAmount}
+                  initial={{ opacity: 0, y: 10 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: -10 }}
+                  transition={{ duration: 0.2 }}
+                >
+                  {isLoading ? <div className="h-6 w-20 bg-gray-800 animate-pulse rounded" /> : stakedAmount.toFixed(2)}
+                </motion.div>
+              </AnimatePresence>
             </div>
-
-            <div>
-              <label className={`text-sm ${isDarkTheme ? "text-gray-400" : "text-gray-500"} mb-1 block`}>Amount</label>
-              <Input
-                type="text"
-                value={amount}
-                onChange={(e) => handleAmountChange(e.target.value)}
-                placeholder="0.0"
-                className={isDarkTheme ? "bg-gray-800 border-gray-700" : "bg-white border-gray-300"}
-              />
+          </div>
+          <div className="bg-gray-900 rounded-lg p-4">
+            <div className="text-sm text-gray-400 mb-1">APY</div>
+            <div className="text-xl font-bold text-green-500">
+              <AnimatePresence mode="wait">
+                <motion.div
+                  key={apy}
+                  initial={{ opacity: 0, y: 10 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: -10 }}
+                  transition={{ duration: 0.2 }}
+                >
+                  {isLoading ? <div className="h-6 w-16 bg-gray-800 animate-pulse rounded" /> : `${apy.toFixed(2)}%`}
+                </motion.div>
+              </AnimatePresence>
             </div>
-
-            <div className={`p-3 rounded-lg ${isDarkTheme ? "bg-gray-800" : "bg-gray-100"}`}>
-              <div className="flex justify-between mb-1">
-                <span className={`text-sm ${isDarkTheme ? "text-gray-400" : "text-gray-500"}`}>Pool</span>
-                <span className={isDarkTheme ? "text-white" : "text-gray-900"}>{pool.name}</span>
-              </div>
-              <div className="flex justify-between mb-1">
-                <span className={`text-sm ${isDarkTheme ? "text-gray-400" : "text-gray-500"}`}>APY</span>
-                <span className="text-green-500">{pool.apy}%</span>
-              </div>
-              <div className="flex justify-between mb-1">
-                <span className={`text-sm ${isDarkTheme ? "text-gray-400" : "text-gray-500"}`}>Lock Period</span>
-                <span className={isDarkTheme ? "text-white" : "text-gray-900"}>
-                  {pool.lockPeriod === 0 ? "Flexible" : `${pool.lockPeriod} days`}
-                </span>
-              </div>
-              <div className="flex justify-between">
-                <span className={`text-sm ${isDarkTheme ? "text-gray-400" : "text-gray-500"}`}>Total Staked</span>
-                <span className={isDarkTheme ? "text-white" : "text-gray-900"}>
-                  {pool.totalStaked.toLocaleString()} {pool.token}
-                </span>
-              </div>
+          </div>
+          <div className="bg-gray-900 rounded-lg p-4">
+            <div className="text-sm text-gray-400 mb-1">Pending Rewards</div>
+            <div className="text-xl font-bold text-gold-500">
+              <AnimatePresence mode="wait">
+                <motion.div
+                  key={pendingRewards}
+                  initial={{ opacity: 0, y: 10 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: -10 }}
+                  transition={{ duration: 0.2 }}
+                >
+                  {isLoading ? (
+                    <div className="h-6 w-20 bg-gray-800 animate-pulse rounded" />
+                  ) : (
+                    pendingRewards.toFixed(4)
+                  )}
+                </motion.div>
+              </AnimatePresence>
             </div>
-
-            {error && (
-              <div className="p-2 bg-red-500/10 border border-red-500/20 rounded-lg flex items-center gap-2">
-                <AlertCircle className="h-4 w-4 text-red-500" />
-                <p className="text-red-500 text-sm">{error}</p>
-              </div>
-            )}
-
-            <Button
-              disabled={!connected || isStaking || !amount || Number.parseFloat(amount) <= 0}
-              className="w-full h-10 text-base font-medium bg-gradient-to-r from-amber-500 to-yellow-500 hover:from-amber-400 hover:to-yellow-400 disabled:from-gray-700 disabled:to-gray-600 disabled:text-gray-400 transition-all duration-200 shadow-lg shadow-amber-900/20 disabled:shadow-none"
-              onClick={handleStake}
-            >
-              {!connected ? (
-                "Connect Wallet"
-              ) : isStaking ? (
-                <div className="flex items-center gap-2">
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                  <span>Staking...</span>
-                </div>
-              ) : (
-                "Stake"
-              )}
-            </Button>
+          </div>
+          <div className="bg-gray-900 rounded-lg p-4">
+            <div className="text-sm text-gray-400 mb-1">Time Remaining</div>
+            <div className="text-xl font-bold text-gray-300">
+              <AnimatePresence mode="wait">
+                <motion.div
+                  key={timeRemaining}
+                  initial={{ opacity: 0, y: 10 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: -10 }}
+                  transition={{ duration: 0.2 }}
+                >
+                  {isLoading ? (
+                    <div className="h-6 w-24 bg-gray-800 animate-pulse rounded" />
+                  ) : (
+                    formattedTimeRemaining()
+                  )}
+                </motion.div>
+              </AnimatePresence>
+            </div>
           </div>
         </div>
 
-        <div>
-          <h3 className={`font-medium mb-4 ${isDarkTheme ? "text-white" : "text-gray-900"}`}>Your Staking Rewards</h3>
-
-          {isLoading ? (
-            <div className="flex justify-center items-center py-12">
-              <Loader2 className="h-8 w-8 animate-spin text-gold" />
-            </div>
-          ) : rewards.length > 0 ? (
-            <div className="space-y-4">
-              {rewards.map((reward, index) => (
-                <div
-                  key={index}
-                  className={`p-4 rounded-lg border ${isDarkTheme ? "bg-gray-800 border-gray-700" : "bg-gray-50 border-gray-200"}`}
-                >
-                  <div className="flex justify-between mb-2">
-                    <span className={`font-medium ${isDarkTheme ? "text-white" : "text-gray-900"}`}>
-                      {reward.token} Rewards
-                    </span>
-                    <span className="text-green-500">
-                      {reward.amount} {reward.token}
-                    </span>
-                  </div>
-                  <Progress value={75} className="h-2 mb-2" />
-                  <div className="flex justify-between text-xs text-gray-500">
-                    <span>Next reward: 12h 34m</span>
-                    <span>Vesting: 75%</span>
-                  </div>
-                </div>
-              ))}
-
-              <Button
-                className="w-full h-10 text-base font-medium bg-gradient-to-r from-amber-500 to-yellow-500 hover:from-amber-400 hover:to-yellow-400 transition-all duration-200 shadow-lg shadow-amber-900/20"
-                onClick={handleClaim}
-              >
-                Claim All Rewards
-              </Button>
+        <Button
+          className="w-full bg-gradient-to-r from-gold-600 to-gold-400 hover:from-gold-500 hover:to-gold-300 text-black font-semibold"
+          disabled={isClaimingRewards || pendingRewards <= 0 || !connected}
+          onClick={handleClaimRewards}
+        >
+          {isClaimingRewards ? (
+            <div className="flex items-center">
+              <span className="mr-2">Claiming</span>
+              <div className="w-4 h-4 border-2 border-t-transparent border-black rounded-full animate-spin" />
             </div>
           ) : (
-            <div className={`text-center py-8 ${isDarkTheme ? "text-gray-400" : "text-gray-500"}`}>
-              <div className="mb-4">No staking rewards found</div>
-              <CheckCircle className="h-12 w-12 mx-auto text-gray-400 mb-4" />
-              <p>Stake tokens to start earning rewards</p>
+            <div className="flex items-center">
+              <CoinsIcon className="mr-2 h-4 w-4" />
+              <span>Claim {pendingRewards.toFixed(4)} GOLD Rewards</span>
             </div>
           )}
-        </div>
-      </div>
-    </div>
+        </Button>
+
+        <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
+          <TabsList className="grid grid-cols-2 w-full bg-gray-900">
+            <TabsTrigger value="stake" className="data-[state=active]:bg-gold-500 data-[state=active]:text-black">
+              <ArrowUpIcon className="mr-2 h-4 w-4" />
+              Stake
+            </TabsTrigger>
+            <TabsTrigger value="unstake" className="data-[state=active]:bg-gold-500 data-[state=active]:text-black">
+              <ArrowDownIcon className="mr-2 h-4 w-4" />
+              Unstake
+            </TabsTrigger>
+          </TabsList>
+
+          <TabsContent value="stake" className="mt-4 space-y-4">
+            <div className="space-y-2">
+              <div className="flex justify-between items-center">
+                <span className="text-sm text-gray-400">Amount to Stake</span>
+                <span className="text-xs text-gray-500">Balance: {maxStakeAmount.toFixed(4)} GOLD</span>
+              </div>
+              <div className="relative">
+                <Input
+                  type="number"
+                  placeholder="0.00"
+                  value={stakeAmount}
+                  onChange={(e) => setStakeAmount(e.target.value)}
+                  className="bg-gray-900 border-gray-700 pr-16"
+                />
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="absolute right-2 top-1/2 transform -translate-y-1/2 text-xs text-gold-500 h-6 px-2"
+                  onClick={handleStakeMaxClick}
+                >
+                  MAX
+                </Button>
+              </div>
+            </div>
+
+            <Button
+              className="w-full bg-gradient-to-r from-gold-600 to-gold-400 hover:from-gold-500 hover:to-gold-300 text-black font-semibold"
+              disabled={
+                isStaking ||
+                !stakeAmount ||
+                Number.parseFloat(stakeAmount) <= 0 ||
+                Number.parseFloat(stakeAmount) > maxStakeAmount ||
+                !connected
+              }
+              onClick={handleStake}
+            >
+              {isStaking ? (
+                <div className="flex items-center">
+                  <span className="mr-2">Staking</span>
+                  <div className="w-4 h-4 border-2 border-t-transparent border-black rounded-full animate-spin" />
+                </div>
+              ) : !connected ? (
+                "Connect Wallet"
+              ) : !stakeAmount || Number.parseFloat(stakeAmount) <= 0 ? (
+                "Enter an amount"
+              ) : Number.parseFloat(stakeAmount) > maxStakeAmount ? (
+                "Insufficient balance"
+              ) : (
+                `Stake ${Number.parseFloat(stakeAmount).toFixed(2)} GOLD`
+              )}
+            </Button>
+          </TabsContent>
+
+          <TabsContent value="unstake" className="mt-4 space-y-4">
+            <div className="space-y-2">
+              <div className="flex justify-between items-center">
+                <span className="text-sm text-gray-400">Amount to Unstake</span>
+                <span className="text-xs text-gray-500">Staked: {maxUnstakeAmount.toFixed(4)} GOLD</span>
+              </div>
+              <div className="relative">
+                <Input
+                  type="number"
+                  placeholder="0.00"
+                  value={unstakeAmount}
+                  onChange={(e) => setUnstakeAmount(e.target.value)}
+                  className="bg-gray-900 border-gray-700 pr-16"
+                />
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="absolute right-2 top-1/2 transform -translate-y-1/2 text-xs text-gold-500 h-6 px-2"
+                  onClick={handleUnstakeMaxClick}
+                >
+                  MAX
+                </Button>
+              </div>
+            </div>
+
+            <Button
+              className="w-full bg-gradient-to-r from-gold-600 to-gold-400 hover:from-gold-500 hover:to-gold-300 text-black font-semibold"
+              disabled={
+                isUnstaking ||
+                !unstakeAmount ||
+                Number.parseFloat(unstakeAmount) <= 0 ||
+                Number.parseFloat(unstakeAmount) > maxUnstakeAmount ||
+                !connected
+              }
+              onClick={handleUnstake}
+            >
+              {isUnstaking ? (
+                <div className="flex items-center">
+                  <span className="mr-2">Unstaking</span>
+                  <div className="w-4 h-4 border-2 border-t-transparent border-black rounded-full animate-spin" />
+                </div>
+              ) : !connected ? (
+                "Connect Wallet"
+              ) : !unstakeAmount || Number.parseFloat(unstakeAmount) <= 0 ? (
+                "Enter an amount"
+              ) : Number.parseFloat(unstakeAmount) > maxUnstakeAmount ? (
+                "Insufficient staked balance"
+              ) : (
+                `Unstake ${Number.parseFloat(unstakeAmount).toFixed(2)} GOLD`
+              )}
+            </Button>
+          </TabsContent>
+        </Tabs>
+      </CardContent>
+    </Card>
   )
 }
+
+// Add default export
+export default StakingInterface

@@ -1,22 +1,17 @@
 import PageLayout from "@/components/PageLayout"
-import SwapCard from "@/components/defi/swap/SwapCard"
-import TokenChart from "@/components/defi/swap/TokenChart"
-import RecentTransactions from "@/components/defi/swap/RecentTransactions"
+import SwapCard from "@/components/defi/SwapCard"
 
 export default function SwapPage() {
   return (
     <PageLayout>
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        <div className="lg:col-span-2 space-y-6">
-          <h1 className="text-3xl font-heading font-bold gold-gradient-text mb-2">Token Swap</h1>
-          <p className="text-gray-400 mb-6">Swap between GOLD and other tokens with the best rates</p>
+      <div className="py-16">
+        <div className="max-w-3xl mx-auto px-4 sm:px-6 lg:px-8">
+          <div className="text-center mb-12">
+            <h1 className="text-3xl md:text-4xl font-bold gold-gradient-text">Token Swap</h1>
+            <p className="mt-4 text-xl text-gray-400">Swap between GOLD and other tokens with the best rates</p>
+          </div>
 
           <SwapCard />
-          <TokenChart />
-        </div>
-
-        <div>
-          <RecentTransactions />
         </div>
       </div>
     </PageLayout>

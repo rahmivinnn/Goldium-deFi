@@ -1,5 +1,6 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
+  reactStrictMode: true,
   eslint: {
     ignoreDuringBuilds: true,
   },
@@ -9,6 +10,14 @@ const nextConfig = {
   images: {
     unoptimized: true,
   },
+  webpack: (config, { isServer }) => {
+    // Fix for pino-pretty
+    if (isServer) {
+      config.externals.push('pino-pretty');
+    }
+    
+    return config;
+  },
 }
 
-export default nextConfig
+export default nextConfig;

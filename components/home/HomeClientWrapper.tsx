@@ -1,26 +1,29 @@
 "use client"
 
-import { Suspense } from "react"
+import { useState, useEffect } from "react"
 import dynamic from "next/dynamic"
 
-// Dynamically import the HeroSection with no SSR to avoid Three.js issues
-const HeroSection = dynamic(() => import("@/components/home/HeroSection"), {
-  ssr: false,
-  loading: () => <HomeLoading />,
-})
-
-function HomeLoading() {
-  return (
-    <div className="h-screen w-full flex items-center justify-center bg-black">
-      <div className="text-amber-500 text-2xl font-bold">Loading Goldium.io...</div>
-    </div>
-  )
-}
+// Dynamically import the ThreeScene component with SSR disabled
+const ThreeScene = dynamic(() => import("../three/ThreeScene"), { ssr: false })
 
 export default function HomeClientWrapper() {
-  return (
-    <Suspense fallback={<HomeLoading />}>
-      <HeroSection />
-    </Suspense>
-  )
+  const [scrollY, setScrollY] = useState(0)
+  const [isMounted, setIsMounted] = useState(false)
+
+  useEffect(() => {
+    setIsMounted(true)
+
+    const handleScroll = () => {
+      setScrollY(window.scrollY)
+    }
+
+    window.addEventListener("scroll", handleScroll)
+    return () => window.removeEventListener("scroll", handleScroll)
+  }, [])
+
+  if (!isMounted) {
+    return null
+  }
+
+  return <ThreeScene scrollY={scrollY} />
 }

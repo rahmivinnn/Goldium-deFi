@@ -2,153 +2,216 @@
 
 import { useState, useEffect, useRef } from "react"
 import { motion } from "framer-motion"
-import { ArrowDown } from "lucide-react"
+import Image from "next/image"
+import { Button } from "@/components/ui/button"
+import { useWallet } from "@/components/providers/WalletContextProvider"
+import ConnectWalletModal from "@/components/ConnectWalletModal"
+import { Loader2, Wallet } from "lucide-react"
+import { useToast } from "@/components/ui/use-toast"
 import dynamic from "next/dynamic"
+import { isBrowser } from "@/utils/browser"
 
-// Dynamically import ThreeScene with no SSR
+// Dynamically import the ThreeScene component with SSR disabled
 const ThreeScene = dynamic(() => import("@/components/three/ThreeScene"), {
   ssr: false,
+  loading: () => <div className="w-full h-screen bg-black" />,
 })
 
 export default function HeroSection() {
+  const [isModalOpen, setIsModalOpen] = useState(false)
+  const { status, address, claimTestTokens, stakeTokens, isProcessing } = useWallet()
+  const { toast } = useToast()
   const [scrollY, setScrollY] = useState(0)
-  const [mounted, setMounted] = useState(false)
-  const containerRef = useRef<HTMLDivElement>(null)
+  const isMounted = useRef(false)
 
-  // Handle scroll
+  // Handle scroll events safely
   useEffect(() => {
+    // Set mounted ref
+    isMounted.current = true
+
+    // Only run on client side
+    if (!isBrowser) return
+
+    // Create scroll handler function
     const handleScroll = () => {
-      if (containerRef.current) {
-        const { top } = containerRef.current.getBoundingClientRect()
-        setScrollY(-top)
+      if (isMounted.current) {
+        setScrollY(window.scrollY)
       }
     }
 
-    window.addEventListener("scroll", handleScroll)
-    return () => window.removeEventListener("scroll", handleScroll)
-  }, [])
+    // Add event listener with passive option for better performance
+    window.addEventListener("scroll", handleScroll, { passive: true })
 
-  // Set mounted state
-  useEffect(() => {
-    setMounted(true)
-  }, [])
+    // Initialize with current scroll position after a small delay
+    // to ensure the component is fully mounted
+    const initTimer = setTimeout(() => {
+      if (isMounted.current) {
+        handleScroll()
+      }
+    }, 0)
 
-  if (!mounted) {
-    return (
-      <div className="h-screen w-full flex items-center justify-center bg-black">
-        <div className="text-amber-500 text-2xl font-bold">Loading Goldium.io...</div>
-      </div>
-    )
+    // Clean up
+    return () => {
+      isMounted.current = false
+      window.removeEventListener("scroll", handleScroll)
+      clearTimeout(initTimer)
+    }
+  }, []) // Empty dependency array means this only runs once on mount
+
+  const handleClaimTokens = async () => {
+    if (status !== "connected") {
+      setIsModalOpen(true)
+      return
+    }
+
+    const result = await claimTestTokens()
+    if (!result) {
+      toast({
+        title: "Claim Failed",
+        description: "Failed to claim test tokens. Please try again.",
+        variant: "destructive",
+      })
+    }
+  }
+
+  const handleStakeTokens = async () => {
+    if (status !== "connected") {
+      setIsModalOpen(true)
+      return
+    }
+
+    const result = await stakeTokens(10)
+    if (!result) {
+      toast({
+        title: "Staking Failed",
+        description: "Failed to stake tokens. Please try again.",
+        variant: "destructive",
+      })
+    }
   }
 
   return (
-    <div ref={containerRef} className="relative h-screen w-full overflow-hidden">
+    <section className="relative min-h-screen flex flex-col items-center justify-center overflow-hidden">
       {/* 3D Background */}
-      <ThreeScene scrollY={scrollY} />
+      <div className="absolute inset-0 z-0">
+        <ThreeScene scrollY={scrollY} />
+      </div>
 
       {/* Content */}
-      <div className="relative z-10 h-full flex flex-col items-center justify-center px-4">
-        {/* Logo */}
+      <div className="container mx-auto px-4 z-10 text-center">
         <motion.div
-          initial={{ scale: 0.8, opacity: 0 }}
-          animate={{ scale: 1, opacity: 1 }}
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.8 }}
-          className="mb-8"
+          className="max-w-4xl mx-auto"
         >
-          <div className="w-32 h-32 relative">
-            <svg viewBox="0 0 100 100" className="w-full h-full">
-              <polygon
-                points="50,10 80,30 80,70 50,90 20,70 20,30"
-                fill="url(#goldGradient)"
-                stroke="#ffc107"
-                strokeWidth="2"
-                className="animate-pulse"
+          {/* Logo */}
+          <motion.div
+            initial={{ scale: 0.8, opacity: 0 }}
+            animate={{ scale: 1, opacity: 1 }}
+            transition={{ duration: 0.8 }}
+            className="flex justify-center mb-6"
+          >
+            <div className="relative h-24 w-24 md:h-32 md:w-32">
+              <Image
+                src="/goldium-logo.png"
+                alt="Goldium.io"
+                width={128}
+                height={128}
+                className="object-contain"
+                priority
               />
-              <defs>
-                <linearGradient id="goldGradient" x1="0%" y1="0%" x2="100%" y2="100%">
-                  <stop offset="0%" stopColor="#ffd700" />
-                  <stop offset="50%" stopColor="#ffb700" />
-                  <stop offset="100%" stopColor="#ff8c00" />
-                </linearGradient>
-              </defs>
-            </svg>
-          </div>
-        </motion.div>
+            </div>
+          </motion.div>
 
-        {/* Title */}
-        <motion.h1
-          initial={{ y: 20, opacity: 0 }}
-          animate={{ y: 0, opacity: 1 }}
-          transition={{ duration: 0.8, delay: 0.3 }}
-          className="text-5xl md:text-7xl font-bold text-center mb-6"
-        >
-          <span className="bg-clip-text text-transparent bg-gradient-to-r from-amber-200 via-yellow-400 to-amber-600">
+          <h1 className="text-5xl md:text-7xl font-bold mb-6 text-transparent bg-clip-text bg-gradient-to-r from-amber-500 to-yellow-300">
             Goldium.io
-          </span>
-        </motion.h1>
+          </h1>
+          <p className="text-xl md:text-2xl text-amber-100/80 mb-8">
+            Join Goldium.io for NFT trading, staking, and seamless crypto payments powered by GOLD token.
+          </p>
 
-        {/* Subtitle */}
-        <motion.p
-          initial={{ y: 20, opacity: 0 }}
-          animate={{ y: 0, opacity: 1 }}
-          transition={{ duration: 0.8, delay: 0.5 }}
-          className="text-xl md:text-2xl text-amber-100/80 text-center max-w-3xl mb-12"
-        >
-          Join Goldium.io for NFT trading, staking, and seamless crypto payments powered by GOLD token.
-        </motion.p>
+          <div className="flex flex-col md:flex-row gap-4 justify-center mb-12">
+            {/* Primary CTA - Connect Wallet */}
+            <Button
+              onClick={() => setIsModalOpen(true)}
+              className="bg-gradient-to-r from-amber-500 to-yellow-500 hover:from-amber-600 hover:to-yellow-600 text-black font-medium text-lg py-6 px-8"
+              size="lg"
+              disabled={status === "connecting" || status === "connected"}
+            >
+              {status === "connecting" ? (
+                <>
+                  <Loader2 className="mr-2 h-5 w-5 animate-spin" />
+                  Connecting...
+                </>
+              ) : status === "connected" ? (
+                "Wallet Connected"
+              ) : (
+                <>
+                  <Wallet className="mr-2 h-5 w-5" />
+                  Connect Wallet
+                </>
+              )}
+            </Button>
 
-        {/* CTA Buttons */}
-        <motion.div
-          initial={{ y: 20, opacity: 0 }}
-          animate={{ y: 0, opacity: 1 }}
-          transition={{ duration: 0.8, delay: 0.7 }}
-          className="flex flex-col sm:flex-row gap-4"
-        >
-          <button className="px-8 py-3 rounded-lg bg-gradient-to-r from-amber-500 to-yellow-600 text-black font-bold hover:from-amber-400 hover:to-yellow-500 transform hover:scale-105 transition-all shadow-lg shadow-amber-900/30">
-            Get Started
-          </button>
-          <button className="px-8 py-3 rounded-lg bg-black/40 border border-amber-500/50 text-amber-100 font-bold hover:bg-black/60 hover:border-amber-400 transform hover:scale-105 transition-all">
-            APKBq8kz.pump
-          </button>
-        </motion.div>
+            {/* Secondary CTAs */}
+            <Button
+              onClick={handleClaimTokens}
+              className="bg-black/50 border border-amber-500/30 hover:bg-amber-500/10 text-amber-300 font-medium"
+              size="lg"
+              disabled={isProcessing}
+            >
+              {isProcessing ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Processing...
+                </>
+              ) : (
+                "Claim 100 GOLD"
+              )}
+            </Button>
 
-        {/* Rating */}
-        <motion.div
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          transition={{ duration: 1, delay: 1 }}
-          className="absolute bottom-20 flex flex-col items-center"
-        >
-          <div className="flex mb-2">
-            {[1, 2, 3, 4, 5].map((star) => (
-              <svg
-                key={star}
-                xmlns="http://www.w3.org/2000/svg"
-                className="h-6 w-6 text-amber-400"
-                fill="currentColor"
-                viewBox="0 0 24 24"
-              >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  d="M11.049 2.927c.3-.921 1.603-.921 1.902 0l1.519 4.674a1 1 0 00.95.69h4.915c.969 0 1.371 1.24.588 1.81l-3.976 2.888a1 1 0 00-.363 1.118l1.518 4.674c.3.922-.755 1.688-1.538 1.118l-3.976-2.888a1 1 0 00-1.176 0l-3.976 2.888c-.783.57-1.838-.197-1.538-1.118l1.518-4.674a1 1 0 00-.363-1.118l-3.976-2.888c-.784-.57-.38-1.81.588-1.81h4.914a1 1 0 00.951-.69l1.519-4.674z"
-                />
-              </svg>
-            ))}
+            <Button
+              onClick={handleStakeTokens}
+              className="bg-black/50 border border-amber-500/30 hover:bg-amber-500/10 text-amber-300 font-medium"
+              size="lg"
+              disabled={isProcessing}
+            >
+              {isProcessing ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Processing...
+                </>
+              ) : (
+                "Stake 10 GOLD"
+              )}
+            </Button>
           </div>
-          <p className="text-amber-200/80 text-sm">RATED 5 STARS BY USERS</p>
         </motion.div>
 
-        {/* Scroll indicator */}
+        {/* Token Contract Address */}
         <motion.div
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
-          transition={{ duration: 1, delay: 1.2 }}
-          className="absolute bottom-8 flex flex-col items-center"
+          transition={{ delay: 0.5, duration: 0.8 }}
+          className="mt-8"
         >
-          <ArrowDown className="h-6 w-6 text-amber-400 animate-bounce" />
+          <div className="inline-block bg-black/60 backdrop-blur-sm border border-amber-500/20 rounded-lg p-4">
+            <div className="flex items-center justify-center gap-2">
+              <div className="h-6 w-6 rounded-full bg-amber-500 flex items-center justify-center">
+                <span className="text-black font-bold text-xs">G</span>
+              </div>
+              <span className="text-amber-500 font-medium">GOLD Token Contract Address</span>
+            </div>
+            <div className="mt-2 bg-gray-900 rounded px-4 py-2 font-mono text-sm text-gray-300">
+              APKBq8kzMBpVKxvqrw67vkd6KuGWqSu2GVb19eK4pump
+            </div>
+          </div>
         </motion.div>
       </div>
-    </div>
+
+      {/* Connect Wallet Modal */}
+      <ConnectWalletModal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} />
+    </section>
   )
 }
