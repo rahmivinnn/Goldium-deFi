@@ -3,7 +3,7 @@ import { motion } from "framer-motion"
 
 export default function StatsSection() {
   const stats = [
-    { value: "$12.5M", label: "Total Value Locked" },
+    { value: "$1M", label: "Total Value Locked" },
     { value: "45K+", label: "Active Users" },
     { value: "1.2M", label: "Transactions" },
     { value: "99.9%", label: "Uptime" },

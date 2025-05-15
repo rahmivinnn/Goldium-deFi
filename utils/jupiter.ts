@@ -1,9 +1,23 @@
 import { type Connection, type PublicKey, Transaction, VersionedTransaction } from "@solana/web3.js"
 import type { Token } from "@/constants/tokens"
+import { getMintAddress } from "@/constants/tokens"
+import { type NetworkType } from "@/components/NetworkContextProvider"
 
-// Jupiter API endpoints
-const JUPITER_QUOTE_API = "https://quote-api.jup.ag/v6/quote"
-const JUPITER_SWAP_API = "https://quote-api.jup.ag/v6/swap"
+// Jupiter API endpoints for different networks
+const JUPITER_API_ENDPOINTS = {
+  "devnet": {
+    quote: "https://quote-api.jup.ag/v6/quote?devnet=true",
+    swap: "https://quote-api.jup.ag/v6/swap?devnet=true"
+  },
+  "testnet": {
+    quote: "https://quote-api.jup.ag/v6/quote?devnet=true", // Jupiter doesn't support testnet directly, use devnet
+    swap: "https://quote-api.jup.ag/v6/swap?devnet=true"
+  },
+  "mainnet-beta": {
+    quote: "https://quote-api.jup.ag/v6/quote",
+    swap: "https://quote-api.jup.ag/v6/swap"
+  }
+}
 
 // Quote parameters
 interface QuoteParams {
@@ -13,6 +27,7 @@ interface QuoteParams {
   slippageBps: number
   onlyDirectRoutes?: boolean
   asLegacyTransaction?: boolean
+  network: NetworkType
 }
 
 // Swap parameters
@@ -23,13 +38,17 @@ interface SwapParams {
   toToken: Token
   quote: any
   slippageBps: number
+  network: NetworkType
 }
 
 // Get quote from Jupiter API
 export async function getQuote(params: QuoteParams) {
   try {
+    // Get the appropriate API endpoint for the current network
+    const quoteApiUrl = JUPITER_API_ENDPOINTS[params.network].quote
+
     // Construct the URL with query parameters
-    const url = new URL(JUPITER_QUOTE_API)
+    const url = new URL(quoteApiUrl)
     url.searchParams.append("inputMint", params.inputMint)
     url.searchParams.append("outputMint", params.outputMint)
     url.searchParams.append("amount", params.amount)
@@ -43,11 +62,33 @@ export async function getQuote(params: QuoteParams) {
       url.searchParams.append("asLegacyTransaction", "true")
     }
 
-    // Fetch quote from Jupiter API
-    const response = await fetch(url.toString())
+    // Add retry logic for better reliability
+    let retries = 3
+    let response = null
+    let error = null
 
-    if (!response.ok) {
-      throw new Error(`Jupiter API error: ${response.status} ${response.statusText}`)
+    while (retries > 0 && !response) {
+      try {
+        // Fetch quote from Jupiter API
+        response = await fetch(url.toString(), {
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          // Add timeout to prevent hanging requests
+          signal: AbortSignal.timeout(10000) // 10 second timeout
+        })
+      } catch (err) {
+        error = err
+        retries--
+        if (retries > 0) {
+          // Wait before retrying
+          await new Promise(resolve => setTimeout(resolve, 1000))
+        }
+      }
+    }
+
+    if (!response || !response.ok) {
+      throw new Error(`Jupiter API error: ${response?.status || 'Request failed'} ${response?.statusText || error?.message || ''}`)
     }
 
     const data = await response.json()
@@ -56,6 +97,9 @@ export async function getQuote(params: QuoteParams) {
     const outAmount = Number(data.outAmount)
     const slippageAdjustment = outAmount * (params.slippageBps / 10000)
     data.outAmountWithSlippage = (outAmount - slippageAdjustment).toString()
+
+    // Add network information to the response
+    data.network = params.network
 
     return data
   } catch (error) {
@@ -69,36 +113,59 @@ export async function executeSwap(
   params: SwapParams,
 ): Promise<{ success: boolean; txId?: string; signature?: string; error?: string }> {
   try {
-    const { connection, wallet, quote, slippageBps } = params
+    const { connection, wallet, quote, slippageBps, network, fromToken, toToken } = params
 
     if (!wallet.publicKey) {
       throw new Error("Wallet not connected")
     }
 
-    // Prepare the swap transaction
+    // Get the appropriate API endpoint for the current network
+    const swapApiUrl = JUPITER_API_ENDPOINTS[network].swap
+
+    // Prepare the swap transaction with network-specific optimizations
     const swapRequestBody = {
       quoteResponse: quote,
       userPublicKey: wallet.publicKey.toString(),
       wrapAndUnwrapSol: true,
       feeAccount: null,
-      computeUnitPriceMicroLamports: 50, // Adjust priority fee as needed
-      asLegacyTransaction: true, // Use legacy transaction for better compatibility
+      // Adjust priority fee based on network
+      computeUnitPriceMicroLamports: network === "mainnet-beta" ? 100 : 50,
+      // Use legacy transaction for better compatibility on devnet/testnet
+      asLegacyTransaction: network !== "mainnet-beta",
       dynamicComputeUnitLimit: true, // Automatically adjust compute unit limit
       skipUserAccountsCheck: true, // Skip checking if user has all required token accounts
     }
 
-    // Get the swap transaction
-    const swapResponse = await fetch(JUPITER_SWAP_API, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify(swapRequestBody),
-    })
+    // Add retry logic for better reliability
+    let retries = 3
+    let swapResponse = null
+    let error = null
 
-    if (!swapResponse.ok) {
-      const errorData = await swapResponse.json()
-      throw new Error(`Jupiter Swap API error: ${JSON.stringify(errorData)}`)
+    while (retries > 0 && !swapResponse) {
+      try {
+        // Get the swap transaction
+        swapResponse = await fetch(swapApiUrl, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify(swapRequestBody),
+          // Add timeout to prevent hanging requests
+          signal: AbortSignal.timeout(15000) // 15 second timeout
+        })
+      } catch (err) {
+        error = err
+        retries--
+        if (retries > 0) {
+          // Wait before retrying
+          await new Promise(resolve => setTimeout(resolve, 1000))
+        }
+      }
+    }
+
+    if (!swapResponse || !swapResponse.ok) {
+      const errorMessage = swapResponse ? await swapResponse.text() : error?.message || "Request failed"
+      throw new Error(`Jupiter Swap API error: ${errorMessage}`)
     }
 
     const swapData = await swapResponse.json()
@@ -118,7 +185,11 @@ export async function executeSwap(
         // Sign the transaction
         if (wallet.signTransaction) {
           signedTx = await wallet.signTransaction(tx)
-          signature = await connection.sendRawTransaction(signedTx.serialize())
+          signature = await connection.sendRawTransaction(signedTx.serialize(), {
+            skipPreflight: false,
+            preflightCommitment: "confirmed",
+            maxRetries: 3
+          })
         } else {
           throw new Error("Wallet does not support signing transactions")
         }
@@ -129,23 +200,47 @@ export async function executeSwap(
         // Sign the transaction
         if (wallet.signTransaction) {
           signedTx = await wallet.signTransaction(tx)
-          signature = await connection.sendRawTransaction(signedTx.serialize())
+          signature = await connection.sendRawTransaction(signedTx.serialize(), {
+            skipPreflight: false,
+            preflightCommitment: "confirmed",
+            maxRetries: 3
+          })
         } else {
           throw new Error("Wallet does not support signing transactions")
         }
       }
 
-      // Wait for confirmation
-      const confirmation = await connection.confirmTransaction(signature, "confirmed")
+      // Wait for confirmation with timeout
+      const confirmationPromise = connection.confirmTransaction(signature, "confirmed")
+      const timeoutPromise = new Promise((_, reject) =>
+        setTimeout(() => reject(new Error("Transaction confirmation timeout")), 60000)
+      )
 
-      if (confirmation.value.err) {
-        throw new Error(`Transaction failed: ${confirmation.value.err.toString()}`)
+      try {
+        const confirmation = await Promise.race([confirmationPromise, timeoutPromise])
+        if (confirmation.value?.err) {
+          throw new Error(`Transaction failed: ${confirmation.value.err.toString()}`)
+        }
+      } catch (error) {
+        if (error.message === "Transaction confirmation timeout") {
+          // Transaction might still be processing
+          return {
+            success: true,
+            txId: signature,
+            signature,
+            warning: "Transaction sent but confirmation timed out. Check explorer for status."
+          }
+        }
+        throw error
       }
 
       return {
         success: true,
         txId: signature,
         signature,
+        fromToken: fromToken.symbol,
+        toToken: toToken.symbol,
+        network
       }
     } else {
       throw new Error("No swap transaction returned from Jupiter API")

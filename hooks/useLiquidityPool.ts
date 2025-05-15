@@ -2,13 +2,12 @@
 
 import { useState, useEffect, useCallback } from "react"
 import { useConnection, useWallet } from "@solana/wallet-adapter-react"
-import { PublicKey, SystemProgram, Transaction, TransactionInstruction } from "@solana/web3.js"
+import { PublicKey, SystemProgram, Transaction, TransactionInstruction, VersionedTransaction, TransactionMessage } from "@solana/web3.js"
 import { useTransaction } from "./useTransaction"
+import { useNetwork } from "@/components/NetworkContextProvider"
+import { getProgramId } from "@/constants/tokens"
 import { BN } from "bn.js"
 import { toast } from "@/components/ui/use-toast"
-
-// Simulated DEX program ID - in a real implementation, this would be the actual program ID
-const DEX_PROGRAM_ID = new PublicKey("DexXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX")
 
 interface PoolData {
   tvl: number
@@ -17,6 +16,8 @@ interface PoolData {
   apy: number
   tokenAReserve: number
   tokenBReserve: number
+  network?: string
+  lastUpdated?: number
 }
 
 interface UserPoolShare {
@@ -34,11 +35,13 @@ interface PoolState {
   earnedFees: number
   isAddingLiquidity: boolean
   isRemovingLiquidity: boolean
+  isClaimingFees: boolean
 }
 
 export function useLiquidityPool(tokenMint: string) {
   const { connection } = useConnection()
   const { publicKey } = useWallet()
+  const { network } = useNetwork()
   const { sendTransaction, isPending } = useTransaction(connection)
   const { sendAndConfirmTransaction, isProcessing } = useTransaction()
 
@@ -46,6 +49,11 @@ export function useLiquidityPool(tokenMint: string) {
   const [userPoolShare, setUserPoolShare] = useState<UserPoolShare | null>(null)
   const [isLoading, setIsLoading] = useState<boolean>(false)
   const [error, setError] = useState<string | null>(null)
+
+  // Get the DEX program ID for the current network
+  const dexProgramId = useCallback(() => {
+    return new PublicKey(getProgramId("DEX", network))
+  }, [network])
 
   const [state, setState] = useState<PoolState>({
     isLoading: true,
@@ -55,6 +63,7 @@ export function useLiquidityPool(tokenMint: string) {
     earnedFees: 0,
     isAddingLiquidity: false,
     isRemovingLiquidity: false,
+    isClaimingFees: false
   })
 
   // Function to fetch pool data
@@ -65,12 +74,10 @@ export function useLiquidityPool(tokenMint: string) {
       setIsLoading(true)
       setState((prev) => ({ ...prev, isLoading: true }))
 
-      // In a real implementation, you would fetch this data from the liquidity pool
-      // For now, we'll use mock data
       // In a real implementation, this would fetch the pool data from the DEX
-      // For now, we'll simulate with a fetch from our API
-      const response = await fetch(`/api/liquidity-pools?mint=${tokenMint}`)
-      if (!response.ok) throw new Error("Failed to fetch pool data")
+      // For now, we'll simulate with a fetch from our API that includes network information
+      const response = await fetch(`/api/liquidity-pools?mint=${tokenMint}&network=${network}`)
+      if (!response.ok) throw new Error(`Failed to fetch pool data on ${network}`)
 
       const data = await response.json()
 
@@ -81,11 +88,15 @@ export function useLiquidityPool(tokenMint: string) {
         apy: data.apy || 0,
         tokenAReserve: data.tokenAReserve || 0,
         tokenBReserve: data.tokenBReserve || 0,
+        network: network,
+        lastUpdated: Date.now()
       })
 
       // If wallet is connected, fetch user's pool share
       if (publicKey) {
-        const userResponse = await fetch(`/api/liquidity-pools/user?mint=${tokenMint}&wallet=${publicKey.toString()}`)
+        const userResponse = await fetch(
+          `/api/liquidity-pools/user?mint=${tokenMint}&wallet=${publicKey.toString()}&network=${network}`
+        )
         if (userResponse.ok) {
           const userData = await userResponse.json()
 
@@ -99,11 +110,15 @@ export function useLiquidityPool(tokenMint: string) {
       }
 
       setError(null)
+
+      // Generate network-specific mock data for demonstration
+      // In a real implementation, this would come from the API response
+      const mockMultiplier = network === "mainnet-beta" ? 10 : network === "testnet" ? 2 : 1
       const mockData = {
-        userLpBalance: 10.5,
-        poolShare: 0.02, // 2%
-        totalValueLocked: 500000,
-        earnedFees: 25.75,
+        userLpBalance: 10.5 * mockMultiplier,
+        poolShare: 0.02 * mockMultiplier, // 2%
+        totalValueLocked: 500000 * mockMultiplier,
+        earnedFees: 25.75 * mockMultiplier,
       }
 
       setState((prev) => ({
@@ -115,22 +130,23 @@ export function useLiquidityPool(tokenMint: string) {
         earnedFees: mockData.earnedFees,
       }))
     } catch (error) {
-      console.error("Error fetching pool data:", error)
-      setError("Failed to fetch pool data")
+      console.error(`Error fetching pool data on ${network}:`, error)
+      setError(`Failed to fetch pool data on ${network}`)
       setState((prev) => ({ ...prev, isLoading: false }))
       toast({
         title: "Error",
-        description: "Failed to fetch liquidity pool data",
+        description: `Failed to fetch liquidity pool data on ${network}`,
         variant: "destructive",
       })
     } finally {
       setIsLoading(false)
       setState((prev) => ({ ...prev, isLoading: false }))
     }
-  }, [tokenMint, publicKey])
+  }, [tokenMint, publicKey, network])
 
-  // Initial fetch and polling
+  // Initial fetch and polling - update when network changes
   useEffect(() => {
+    // Fetch immediately when network changes
     fetchPoolData()
 
     const interval = setInterval(() => {
@@ -138,17 +154,7 @@ export function useLiquidityPool(tokenMint: string) {
     }, 30000) // Update every 30 seconds
 
     return () => clearInterval(interval)
-  }, [fetchPoolData])
-
-  // Fetch pool data on mount and when wallet changes
-  useEffect(() => {
-    fetchPoolData()
-
-    // Set up interval to refresh data
-    const intervalId = setInterval(fetchPoolData, 10000) // Every 10 seconds
-
-    return () => clearInterval(intervalId)
-  }, [fetchPoolData])
+  }, [fetchPoolData, network])
 
   // Add liquidity
   const addLiquidity = useCallback(
@@ -156,8 +162,13 @@ export function useLiquidityPool(tokenMint: string) {
       if (!publicKey || !tokenMint) return null
 
       try {
+        setState((prev) => ({ ...prev, isAddingLiquidity: true }))
+
         // Convert amount to lamports
         const amountLamports = new BN(amount * 1e9)
+
+        // Get the current network's DEX program ID
+        const programId = dexProgramId()
 
         // Create a transaction to call the DEX program
         const instruction = new TransactionInstruction({
@@ -166,26 +177,54 @@ export function useLiquidityPool(tokenMint: string) {
             { pubkey: new PublicKey(tokenMint), isSigner: false, isWritable: true },
             { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
           ],
-          programId: DEX_PROGRAM_ID,
+          programId,
           data: Buffer.from([1, ...amountLamports.toArray("le", 8)]), // Instruction to add liquidity
         })
 
-        const transaction = new Transaction().add(instruction)
+        // Use versioned transactions on mainnet for better performance
+        let transaction
+
+        if (network === "mainnet-beta") {
+          // Create a versioned transaction (v0)
+          const { blockhash } = await connection.getLatestBlockhash()
+          const messageV0 = new TransactionMessage({
+            payerKey: publicKey,
+            recentBlockhash: blockhash,
+            instructions: [instruction]
+          }).compileToV0Message()
+
+          transaction = new VersionedTransaction(messageV0)
+        } else {
+          // Use legacy transaction for devnet/testnet
+          transaction = new Transaction().add(instruction)
+        }
 
         const signature = await sendAndConfirmTransaction(transaction, {
           onSuccess: () => {
             // Update pool data after successful operation
             fetchPoolData()
+            toast({
+              title: "Liquidity Added",
+              description: `Successfully added liquidity on ${network}`,
+              variant: "default",
+            })
           },
         })
 
+        setState((prev) => ({ ...prev, isAddingLiquidity: false }))
         return signature
       } catch (error) {
-        console.error("Error adding liquidity:", error)
+        console.error(`Error adding liquidity on ${network}:`, error)
+        setState((prev) => ({ ...prev, isAddingLiquidity: false }))
+        toast({
+          title: "Error",
+          description: `Failed to add liquidity on ${network}: ${error.message}`,
+          variant: "destructive",
+        })
         throw error
       }
     },
-    [publicKey, tokenMint, sendAndConfirmTransaction, fetchPoolData],
+    [publicKey, tokenMint, sendAndConfirmTransaction, fetchPoolData, network, connection, dexProgramId],
   )
 
   // Function to add liquidity
@@ -229,8 +268,13 @@ export function useLiquidityPool(tokenMint: string) {
       if (!publicKey || !tokenMint) return null
 
       try {
+        setState((prev) => ({ ...prev, isRemovingLiquidity: true }))
+
         // Convert amount to lamports
         const amountLamports = new BN(amount * 1e9)
+
+        // Get the current network's DEX program ID
+        const programId = dexProgramId()
 
         // Create a transaction to call the DEX program
         const instruction = new TransactionInstruction({
@@ -239,26 +283,54 @@ export function useLiquidityPool(tokenMint: string) {
             { pubkey: new PublicKey(tokenMint), isSigner: false, isWritable: true },
             { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
           ],
-          programId: DEX_PROGRAM_ID,
+          programId,
           data: Buffer.from([2, ...amountLamports.toArray("le", 8)]), // Instruction to remove liquidity
         })
 
-        const transaction = new Transaction().add(instruction)
+        // Use versioned transactions on mainnet for better performance
+        let transaction
+
+        if (network === "mainnet-beta") {
+          // Create a versioned transaction (v0)
+          const { blockhash } = await connection.getLatestBlockhash()
+          const messageV0 = new TransactionMessage({
+            payerKey: publicKey,
+            recentBlockhash: blockhash,
+            instructions: [instruction]
+          }).compileToV0Message()
+
+          transaction = new VersionedTransaction(messageV0)
+        } else {
+          // Use legacy transaction for devnet/testnet
+          transaction = new Transaction().add(instruction)
+        }
 
         const signature = await sendAndConfirmTransaction(transaction, {
           onSuccess: () => {
             // Update pool data after successful operation
             fetchPoolData()
+            toast({
+              title: "Liquidity Removed",
+              description: `Successfully removed liquidity on ${network}`,
+              variant: "default",
+            })
           },
         })
 
+        setState((prev) => ({ ...prev, isRemovingLiquidity: false }))
         return signature
       } catch (error) {
-        console.error("Error removing liquidity:", error)
+        console.error(`Error removing liquidity on ${network}:`, error)
+        setState((prev) => ({ ...prev, isRemovingLiquidity: false }))
+        toast({
+          title: "Error",
+          description: `Failed to remove liquidity on ${network}: ${error.message}`,
+          variant: "destructive",
+        })
         throw error
       }
     },
-    [publicKey, tokenMint, sendAndConfirmTransaction, fetchPoolData],
+    [publicKey, tokenMint, sendAndConfirmTransaction, fetchPoolData, network, connection, dexProgramId],
   )
 
   // Function to remove liquidity
@@ -301,6 +373,11 @@ export function useLiquidityPool(tokenMint: string) {
     if (!publicKey || !tokenMint) return null
 
     try {
+      setState((prev) => ({ ...prev, isClaimingFees: true }))
+
+      // Get the current network's DEX program ID
+      const programId = dexProgramId()
+
       // Create a transaction to call the DEX program
       const instruction = new TransactionInstruction({
         keys: [
@@ -308,25 +385,53 @@ export function useLiquidityPool(tokenMint: string) {
           { pubkey: new PublicKey(tokenMint), isSigner: false, isWritable: true },
           { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
         ],
-        programId: DEX_PROGRAM_ID,
+        programId,
         data: Buffer.from([3]), // Instruction to claim fees
       })
 
-      const transaction = new Transaction().add(instruction)
+      // Use versioned transactions on mainnet for better performance
+      let transaction
+
+      if (network === "mainnet-beta") {
+        // Create a versioned transaction (v0)
+        const { blockhash } = await connection.getLatestBlockhash()
+        const messageV0 = new TransactionMessage({
+          payerKey: publicKey,
+          recentBlockhash: blockhash,
+          instructions: [instruction]
+        }).compileToV0Message()
+
+        transaction = new VersionedTransaction(messageV0)
+      } else {
+        // Use legacy transaction for devnet/testnet
+        transaction = new Transaction().add(instruction)
+      }
 
       const signature = await sendAndConfirmTransaction(transaction, {
         onSuccess: () => {
           // Update pool data after successful operation
           fetchPoolData()
+          toast({
+            title: "Fees Claimed",
+            description: `Successfully claimed fees on ${network}`,
+            variant: "default",
+          })
         },
       })
 
+      setState((prev) => ({ ...prev, isClaimingFees: false }))
       return signature
     } catch (error) {
-      console.error("Error claiming fees:", error)
+      console.error(`Error claiming fees on ${network}:`, error)
+      setState((prev) => ({ ...prev, isClaimingFees: false }))
+      toast({
+        title: "Error",
+        description: `Failed to claim fees on ${network}: ${error.message}`,
+        variant: "destructive",
+      })
       throw error
     }
-  }, [publicKey, tokenMint, sendAndConfirmTransaction, fetchPoolData])
+  }, [publicKey, tokenMint, sendAndConfirmTransaction, fetchPoolData, network, connection, dexProgramId])
 
   // Format pool share
   const formattedPoolShare = useCallback(() => {
