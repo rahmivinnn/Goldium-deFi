@@ -1,56 +1,79 @@
 "use client"
 
 import { useState } from "react"
-import { useNetwork, type NetworkType } from "@/components/NetworkContextProvider"
+import { useNetwork } from "@/components/providers/NetworkContextProvider"
 import { Button } from "@/components/ui/button"
-import { ChevronDown } from "lucide-react"
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
+import { Globe, ChevronDown, CheckCircle2 } from "lucide-react"
+import { motion } from "framer-motion"
 
-export default function NetworkSelector() {
-  const { network, setNetwork } = useNetwork()
+export function NetworkSelector() {
+  const { network, setNetwork, isTestEnvironment } = useNetwork()
   const [isOpen, setIsOpen] = useState(false)
 
-  const networks: { id: NetworkType; name: string; color: string }[] = [
-    { id: "devnet", name: "Devnet", color: "bg-purple-500" },
-    { id: "testnet", name: "Testnet", color: "bg-blue-500" },
-    { id: "mainnet-beta", name: "Mainnet", color: "bg-green-500" },
-  ]
+  const networks = [
+    { id: "devnet", name: "Devnet", color: "text-purple-400" },
+    { id: "testnet", name: "Testnet", color: "text-blue-400" },
+    { id: "mainnet-beta", name: "Mainnet Beta", color: "text-green-400" },
+  ] as const
 
   const currentNetwork = networks.find((n) => n.id === network) || networks[0]
 
   return (
-    <div className="relative">
-      <Button
-        variant="outline"
-        size="sm"
-        className="flex items-center gap-2 border-gold-500/20 text-sm"
-        onClick={() => setIsOpen(!isOpen)}
-      >
-        <span className={`h-2 w-2 rounded-full ${currentNetwork.color}`} />
-        <span>{currentNetwork.name}</span>
-        <ChevronDown className="h-4 w-4" />
-      </Button>
-
-      {isOpen && (
-        <div className="absolute right-0 mt-2 w-40 rounded-md bg-black/90 backdrop-blur-md border border-gold-500/20 shadow-lg shadow-gold-500/10 py-1 z-50">
-          {networks.map((n) => (
-            <button
-              key={n.id}
-              className={`flex items-center gap-2 w-full px-4 py-2 text-sm text-left ${
-                n.id === network
-                  ? "text-gold-500 bg-gold-500/10"
-                  : "text-gray-300 hover:text-gold-500 hover:bg-gold-500/5"
-              }`}
+    <DropdownMenu open={isOpen} onOpenChange={setIsOpen}>
+      <DropdownMenuTrigger asChild>
+        <Button
+          variant="outline"
+          size="sm"
+          className={`flex items-center gap-2 bg-black/20 border border-${currentNetwork.id === "mainnet-beta" ? "green" : "amber"}-500/30 hover:bg-${currentNetwork.id === "mainnet-beta" ? "green" : "amber"}-500/10`}
+        >
+          <Globe className={`h-4 w-4 ${currentNetwork.color}`} />
+          <span className={currentNetwork.color}>{currentNetwork.name}</span>
+          <ChevronDown className="h-4 w-4 opacity-50" />
+          {isTestEnvironment && (
+            <span className="absolute -top-1 -right-1 flex h-3 w-3">
+              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-400 opacity-75"></span>
+              <span className="relative inline-flex rounded-full h-3 w-3 bg-amber-500"></span>
+            </span>
+          )}
+        </Button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end" className="w-[200px] bg-gray-900 border border-gray-800">
+        <div className="p-2">
+          <p className="text-xs text-gray-400 mb-2">Select Network</p>
+          {networks.map((item) => (
+            <DropdownMenuItem
+              key={item.id}
+              className={`flex items-center justify-between rounded-md ${
+                network === item.id ? "bg-gray-800" : "hover:bg-gray-800"
+              } cursor-pointer`}
               onClick={() => {
-                setNetwork(n.id)
+                setNetwork(item.id)
                 setIsOpen(false)
               }}
             >
-              <span className={`h-2 w-2 rounded-full ${n.color}`} />
-              <span>{n.name}</span>
-            </button>
+              <div className="flex items-center gap-2">
+                <Globe className={`h-4 w-4 ${item.color}`} />
+                <span className={item.color}>{item.name}</span>
+              </div>
+              {network === item.id && <CheckCircle2 className="h-4 w-4 text-green-500" />}
+            </DropdownMenuItem>
           ))}
         </div>
-      )}
-    </div>
+        {isTestEnvironment && (
+          <div className="border-t border-gray-800 p-2">
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              className="text-xs text-amber-500 p-2 bg-amber-500/10 rounded"
+            >
+              You are using a test network. Tokens have no real value.
+            </motion.div>
+          </div>
+        )}
+      </DropdownMenuContent>
+    </DropdownMenu>
   )
 }
+
+export default NetworkSelector

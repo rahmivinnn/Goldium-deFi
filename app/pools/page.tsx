@@ -15,7 +15,7 @@ const POOLS = [
     name: "SOL-GOLD",
     token1: AVAILABLE_TOKENS[0], // SOL
     token2: AVAILABLE_TOKENS[1], // GOLD
-    tvl: 500000,
+    tvl: 1250000,
     apr: 42.5,
     volume24h: 320000,
     myLiquidity: 5000,
@@ -26,7 +26,7 @@ const POOLS = [
     name: "GOLD-USDC",
     token1: AVAILABLE_TOKENS[1], // GOLD
     token2: AVAILABLE_TOKENS[2], // USDC
-    tvl: 300000,
+    tvl: 850000,
     apr: 38.2,
     volume24h: 180000,
     myLiquidity: 2500,
@@ -37,7 +37,7 @@ const POOLS = [
     name: "SOL-USDC",
     token1: AVAILABLE_TOKENS[0], // SOL
     token2: AVAILABLE_TOKENS[2], // USDC
-    tvl: 1000000,
+    tvl: 3200000,
     apr: 28.7,
     volume24h: 950000,
     myLiquidity: 0,
@@ -48,7 +48,7 @@ const POOLS = [
     name: "GOLD-BONK",
     token1: AVAILABLE_TOKENS[1], // GOLD
     token2: AVAILABLE_TOKENS[3], // BONK
-    tvl: 200000,
+    tvl: 420000,
     apr: 65.3,
     volume24h: 125000,
     myLiquidity: 1200,
@@ -90,7 +90,7 @@ export default function PoolsPage() {
                   <CardTitle className="text-lg text-gray-300">Total Value Locked</CardTitle>
                 </CardHeader>
                 <CardContent>
-                  <p className="text-2xl font-bold text-gold">$2,000,000</p>
+                  <p className="text-2xl font-bold text-gold">$5,720,000</p>
                   <p className="text-green-400 text-sm">+5.2% (24h)</p>
                 </CardContent>
               </Card>

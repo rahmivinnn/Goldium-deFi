@@ -10,10 +10,9 @@ import { useStaking } from "@/hooks/useStaking"
 import { useWalletBalance } from "@/hooks/useWalletBalance"
 import { useToast } from "@/components/ui/use-toast"
 import { motion, AnimatePresence } from "framer-motion"
-import { GOLD_TOKEN } from "@/constants/tokens"
 import { ArrowUpIcon, ArrowDownIcon, CoinsIcon } from "lucide-react"
 
-// Constants
+// Constants adjusted for 1M total supply
 const STAKING_PROGRAM_ID = "99SzC9waY86s9JRPYJ9Fw9K6YVziw9L9z8L95WQWv7wn"
 const STAKING_POOL_MINT = "Gh9Ly5t8LzVtdWq2rM3W5qTW52wX68yQ6rXdi9999999"
 const STAKING_POOL_ATA = "9999999999999999999999999999999999999999999999999999999999999999"
@@ -22,7 +21,7 @@ const TREASURY_ATA = "9999999999999999999999999999999999999999999999999999999999
 export function StakingInterface() {
   const { connected, publicKey } = useWallet()
   const { toast } = useToast()
-  const { balances } = useWalletBalance()
+  const { goldBalance } = useWalletBalance()
   const {
     stakedAmount,
     pendingRewards,
@@ -43,7 +42,7 @@ export function StakingInterface() {
   const [unstakeAmount, setUnstakeAmount] = useState("")
   const [activeTab, setActiveTab] = useState("stake")
 
-  const maxStakeAmount = balances[GOLD_TOKEN.symbol] || 0
+  const maxStakeAmount = goldBalance || 0
   const maxUnstakeAmount = stakedAmount
 
   const handleStakeMaxClick = () => {

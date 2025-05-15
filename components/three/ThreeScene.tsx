@@ -1,23 +1,82 @@
 "use client"
 
 import { useRef, useEffect, useState } from "react"
-import { Canvas, useFrame } from "@react-three/fiber"
-import { OrbitControls, Stars, Text, Sparkles, Cloud } from "@react-three/drei"
-import * as THREE from "three"
+import dynamic from "next/dynamic"
 import { isBrowser } from "@/utils/browser"
+
+// Dynamically import Three.js components to prevent multiple instances
+const DynamicCanvas = dynamic(() => import("@react-three/fiber").then((mod) => mod.Canvas), { ssr: false })
+const DynamicOrbitControls = dynamic(() => import("@react-three/drei").then((mod) => mod.OrbitControls), { ssr: false })
+const DynamicStars = dynamic(() => import("@react-three/drei").then((mod) => mod.Stars), { ssr: false })
+const DynamicText = dynamic(() => import("@react-three/drei").then((mod) => mod.Text), { ssr: false })
+const DynamicSparkles = dynamic(() => import("@react-three/drei").then((mod) => mod.Sparkles), { ssr: false })
+const DynamicCloud = dynamic(() => import("@react-three/drei").then((mod) => mod.Cloud), { ssr: false })
+
+// Import THREE only once
+import * as THREE from "three"
+
+// Use React's useFrame hook directly to prevent multiple imports
+import { useFrame } from "@react-three/fiber"
 
 // Main Scene Component
 export default function ThreeScene({ scrollY = 0 }) {
   // Add state to track if component is mounted (client-side)
   const [isMounted, setIsMounted] = useState(false)
+  const [isLoading, setIsLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
 
   // Only run on client-side
   useEffect(() => {
-    if (!isBrowser) return
+    if (!isBrowser) {
+      console.log("ThreeScene: Not in browser environment, skipping initialization")
+      return
+    }
 
-    setIsMounted(true)
-    return () => setIsMounted(false)
+    console.log("ThreeScene: Initializing...")
+
+    try {
+      // Check if WebGL is supported
+      const canvas = document.createElement("canvas")
+      const gl = canvas.getContext("webgl") || canvas.getContext("experimental-webgl")
+
+      if (!gl) {
+        throw new Error("WebGL not supported")
+      }
+
+      console.log("ThreeScene: WebGL is supported")
+      setIsMounted(true)
+      setIsLoading(false)
+    } catch (err) {
+      console.error("ThreeScene: Error during initialization", err)
+      setError(err instanceof Error ? err.message : "Unknown error")
+      setIsLoading(false)
+    }
+
+    return () => {
+      console.log("ThreeScene: Unmounting")
+      setIsMounted(false)
+    }
   }, [])
+
+  // Show loading state
+  if (isLoading) {
+    return (
+      <div className="w-full h-screen bg-black flex items-center justify-center text-white">Loading 3D scene...</div>
+    )
+  }
+
+  // Show error state
+  if (error) {
+    return (
+      <div className="w-full h-screen bg-black flex items-center justify-center text-white">
+        <div className="text-center">
+          <h3 className="text-xl mb-2">3D Rendering Error</h3>
+          <p className="text-red-400">{error}</p>
+          <p className="mt-4 text-sm">Try using a different browser or device</p>
+        </div>
+      </div>
+    )
+  }
 
   // Don't render anything on server-side
   if (!isMounted) {
@@ -26,7 +85,7 @@ export default function ThreeScene({ scrollY = 0 }) {
 
   return (
     <div className="w-full h-screen">
-      <Canvas shadows camera={{ position: [0, 5, 15], fov: 60 }}>
+      <DynamicCanvas shadows camera={{ position: [0, 5, 15], fov: 60 }}>
         <color attach="background" args={["#000000"]} />
         <fog attach="fog" args={["#000000", 10, 30]} />
 
@@ -44,7 +103,7 @@ export default function ThreeScene({ scrollY = 0 }) {
         <pointLight position={[-8, 3, -8]} intensity={0.6} color="#FF4500" />
 
         {/* Environment */}
-        <Stars radius={100} depth={50} count={5000} factor={4} saturation={0} fade speed={1} />
+        <DynamicStars radius={100} depth={50} count={5000} factor={4} saturation={0} fade speed={1} />
 
         {/* Scene Elements */}
         <FloatingIsland position={[0, -2, 0]} />
@@ -52,10 +111,10 @@ export default function ThreeScene({ scrollY = 0 }) {
         <Characters position={[0, 0, 0]} />
 
         {/* Background Sparkles */}
-        <Sparkles count={100} scale={[20, 10, 20]} size={1} speed={0.2} opacity={0.5} />
+        <DynamicSparkles count={100} scale={[20, 10, 20]} size={1} speed={0.2} opacity={0.5} />
 
         {/* Controls */}
-        <OrbitControls
+        <DynamicOrbitControls
           enableZoom={false}
           enablePan={false}
           rotateSpeed={0.3}
@@ -64,7 +123,7 @@ export default function ThreeScene({ scrollY = 0 }) {
           minPolarAngle={Math.PI / 4}
           maxPolarAngle={Math.PI / 2}
         />
-      </Canvas>
+      </DynamicCanvas>
     </div>
   )
 }
@@ -121,9 +180,9 @@ function FloatingIsland(props) {
       </mesh>
 
       {/* Clouds around the island */}
-      <Cloud position={[-5, 5, -5]} speed={0.2} opacity={0.5} />
-      <Cloud position={[5, 4, 5]} speed={0.1} opacity={0.5} />
-      <Cloud position={[0, 6, -8]} speed={0.15} opacity={0.5} />
+      <DynamicCloud position={[-5, 5, -5]} speed={0.2} opacity={0.5} />
+      <DynamicCloud position={[5, 4, 5]} speed={0.1} opacity={0.5} />
+      <DynamicCloud position={[0, 6, -8]} speed={0.15} opacity={0.5} />
     </group>
   )
 }
@@ -268,13 +327,13 @@ function FloatingToken(props) {
 
       {/* Token letter */}
       <mesh position={[0, 0.11, 0]}>
-        <Text fontSize={0.5} color="#000000" font="/fonts/Inter-Bold.ttf" anchorX="center" anchorY="middle">
+        <DynamicText fontSize={0.5} color="#000000" font="/fonts/Inter-Bold.ttf" anchorX="center" anchorY="middle">
           G
-        </Text>
+        </DynamicText>
       </mesh>
 
       {/* Sparkles around the token */}
-      <Sparkles count={50} scale={[3, 3, 3]} size={0.4} speed={0.3} color="#FFD700" />
+      <DynamicSparkles count={50} scale={[3, 3, 3]} size={0.4} speed={0.3} color="#FFD700" />
     </group>
   )
 }

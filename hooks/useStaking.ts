@@ -1,275 +1,269 @@
 "use client"
 
 import { useState, useEffect, useCallback } from "react"
-import { useConnection, useWallet } from "@solana/wallet-adapter-react"
-import { PublicKey, SystemProgram, Transaction, TransactionInstruction, VersionedTransaction, TransactionMessage } from "@solana/web3.js"
-import { GOLD_TOKEN, getMintAddress, getProgramId } from "@/constants/tokens"
-import { useTransaction } from "./useTransaction"
-import { useNetwork } from "@/components/NetworkContextProvider"
-import { BN } from "bn.js"
+import { useWallet, useConnection } from "@solana/wallet-adapter-react"
+import { useNetwork } from "@/components/providers/NetworkContextProvider"
 
-interface StakingState {
-  stakedAmount: number
-  pendingRewards: number
-  stakingStartTime: number
-  apy: number
-  isStaking: boolean
-  lastUpdated?: number
-}
+// Adjusted for 1M total supply
+const REWARD_RATE = 0.15 // 15% APY
+const REWARD_INTERVAL = 86400 // 1 day in seconds
+const MIN_STAKE_DURATION = 604800 // 7 days in seconds
 
 export function useStaking() {
+  const { publicKey, connected } = useWallet()
   const { connection } = useConnection()
-  const { publicKey } = useWallet()
   const { network } = useNetwork()
-  const { sendAndConfirmTransaction, isProcessing } = useTransaction()
 
-  const [stakingState, setStakingState] = useState<StakingState>({
-    stakedAmount: 0,
-    pendingRewards: 0,
-    stakingStartTime: 0,
-    apy: 0,
-    isStaking: false,
-    lastUpdated: 0
-  })
+  const [stakedAmount, setStakedAmount] = useState(0)
+  const [pendingRewards, setPendingRewards] = useState(0)
+  const [stakeStartTime, setStakeStartTime] = useState(0)
+  const [timeRemaining, setTimeRemaining] = useState(0)
+  const [apy, setApy] = useState(REWARD_RATE * 100)
 
-  const [isLoading, setIsLoading] = useState<boolean>(false)
-  const [error, setError] = useState<string | null>(null)
+  const [isStaking, setIsStaking] = useState(false)
+  const [isUnstaking, setIsUnstaking] = useState(false)
+  const [isClaimingRewards, setIsClaimingRewards] = useState(false)
+  const [isLoading, setIsLoading] = useState(true)
 
-  // Get the staking program ID for the current network
-  const stakingProgramId = useCallback(() => {
-    return new PublicKey(getProgramId("STAKING", network))
-  }, [network])
+  // Format time remaining
+  const formattedTimeRemaining = useCallback(() => {
+    if (timeRemaining <= 0) return "Ready to unstake"
 
-  // Get the GOLD token mint address for the current network
-  const goldMintAddress = useCallback(() => {
-    return new PublicKey(getMintAddress(GOLD_TOKEN, network))
-  }, [network])
+    const days = Math.floor(timeRemaining / 86400)
+    const hours = Math.floor((timeRemaining % 86400) / 3600)
+    const minutes = Math.floor((timeRemaining % 3600) / 60)
 
-  // Fetch staking state
-  const fetchStakingState = useCallback(async () => {
-    if (!publicKey) return
+    return `${days}d ${hours}h ${minutes}m`
+  }, [timeRemaining])
+
+  // Calculate pending rewards
+  const calculatePendingRewards = useCallback(() => {
+    if (stakedAmount <= 0 || stakeStartTime <= 0) return 0
+
+    const now = Math.floor(Date.now() / 1000)
+    const stakeDuration = now - stakeStartTime
+
+    // Calculate rewards based on staked amount, duration, and APY
+    // For 1M total supply, we adjust the reward calculation
+    const dailyRewardRate = REWARD_RATE / 365
+    const daysStaked = stakeDuration / 86400
+
+    return stakedAmount * dailyRewardRate * daysStaked
+  }, [stakedAmount, stakeStartTime])
+
+  // Refresh staking data
+  const refreshStakingData = useCallback(async () => {
+    if (!connected || !publicKey) {
+      setStakedAmount(0)
+      setPendingRewards(0)
+      setStakeStartTime(0)
+      setTimeRemaining(0)
+      setIsLoading(false)
+      return
+    }
+
+    setIsLoading(true)
 
     try {
-      setIsLoading(true)
+      // In a real implementation, we would fetch this data from the blockchain
+      // For this demo, we'll simulate it with mock data
 
-      // In a real implementation, this would fetch the staking account data from the program
-      // For now, we'll simulate with a fetch from our API that includes network information
-      const response = await fetch(`/api/stake?wallet=${publicKey.toString()}&network=${network}`)
-      if (!response.ok) throw new Error("Failed to fetch staking data")
+      // Get staked amount from localStorage for demo purposes
+      const storedStakedAmount = localStorage.getItem(`${publicKey.toString()}_stakedAmount`)
+      const storedStakeStartTime = localStorage.getItem(`${publicKey.toString()}_stakeStartTime`)
 
-      const data = await response.json()
+      const staked = storedStakedAmount ? Number.parseFloat(storedStakedAmount) : 0
+      const startTime = storedStakeStartTime ? Number.parseInt(storedStakeStartTime) : 0
 
-      setStakingState({
-        stakedAmount: data.stakedAmount || 0,
-        pendingRewards: data.pendingRewards || 0,
-        stakingStartTime: data.stakingStartTime || 0,
-        apy: data.apy || 0,
-        isStaking: data.stakedAmount > 0,
-        lastUpdated: Date.now()
-      })
+      setStakedAmount(staked)
+      setStakeStartTime(startTime)
 
-      setError(null)
-    } catch (err) {
-      console.error("Error fetching staking state:", err)
-      setError(`Failed to fetch staking data on ${network}`)
+      // Calculate pending rewards
+      if (staked > 0 && startTime > 0) {
+        const rewards = calculatePendingRewards()
+        setPendingRewards(rewards)
+
+        // Calculate time remaining until unstake is available
+        const now = Math.floor(Date.now() / 1000)
+        const unlockTime = startTime + MIN_STAKE_DURATION
+        const remaining = Math.max(0, unlockTime - now)
+
+        setTimeRemaining(remaining)
+      } else {
+        setPendingRewards(0)
+        setTimeRemaining(0)
+      }
+
+      // Set APY based on network
+      if (network === "testnet") {
+        setApy(15) // 15% APY on testnet
+      } else if (network === "devnet") {
+        setApy(20) // 20% APY on devnet for testing
+      } else {
+        setApy(12) // 12% APY on mainnet
+      }
+    } catch (error) {
+      console.error("Error refreshing staking data:", error)
     } finally {
       setIsLoading(false)
     }
-  }, [publicKey, network])
-
-  // Initial fetch and polling - update when network changes
-  useEffect(() => {
-    if (!publicKey) return
-
-    // Fetch immediately when network changes
-    fetchStakingState()
-
-    const interval = setInterval(() => {
-      fetchStakingState()
-    }, 10000) // Update every 10 seconds
-
-    return () => clearInterval(interval)
-  }, [publicKey, fetchStakingState, network])
+  }, [connected, publicKey, network, calculatePendingRewards])
 
   // Stake tokens
   const stakeTokens = useCallback(
     async (amount: number) => {
-      if (!publicKey) return null
+      if (!connected || !publicKey || amount <= 0) {
+        throw new Error("Cannot stake tokens")
+      }
+
+      setIsStaking(true)
 
       try {
-        // Convert amount to lamports (accounting for decimals)
-        const amountLamports = new BN(amount * Math.pow(10, GOLD_TOKEN.decimals))
+        // In a real implementation, we would send a transaction to the blockchain
+        // For this demo, we'll simulate it with localStorage
 
-        // Get the current network's program ID and token mint
-        const programId = stakingProgramId()
-        const mintAddress = goldMintAddress()
+        // Get current staked amount
+        const storedStakedAmount = localStorage.getItem(`${publicKey.toString()}_stakedAmount`)
+        const currentStakedAmount = storedStakedAmount ? Number.parseFloat(storedStakedAmount) : 0
 
-        // In a real implementation, this would create instructions to:
-        // 1. Transfer tokens to the staking program
-        // 2. Call the stake instruction on the program
+        // Update staked amount
+        const newStakedAmount = currentStakedAmount + amount
+        localStorage.setItem(`${publicKey.toString()}_stakedAmount`, newStakedAmount.toString())
 
-        // Create a transaction to call the staking program
-        const instruction = new TransactionInstruction({
-          keys: [
-            { pubkey: publicKey, isSigner: true, isWritable: true },
-            { pubkey: mintAddress, isSigner: false, isWritable: true },
-            { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
-          ],
-          programId,
-          data: Buffer.from([1, ...amountLamports.toArray("le", 8)]), // Instruction to stake tokens
-        })
-
-        // Use versioned transactions on mainnet for better performance
-        let transaction
-
-        if (network === "mainnet-beta") {
-          // Create a versioned transaction (v0)
-          const { blockhash } = await connection.getLatestBlockhash()
-          const messageV0 = new TransactionMessage({
-            payerKey: publicKey,
-            recentBlockhash: blockhash,
-            instructions: [instruction]
-          }).compileToV0Message()
-
-          transaction = new VersionedTransaction(messageV0)
-        } else {
-          // Use legacy transaction for devnet/testnet
-          transaction = new Transaction().add(instruction)
+        // Set stake start time if this is the first stake
+        if (currentStakedAmount <= 0) {
+          const now = Math.floor(Date.now() / 1000)
+          localStorage.setItem(`${publicKey.toString()}_stakeStartTime`, now.toString())
         }
 
-        const signature = await sendAndConfirmTransaction(transaction, {
-          onSuccess: () => {
-            // Update staking state after successful stake
-            fetchStakingState()
-          },
-        })
+        // Refresh staking data
+        await refreshStakingData()
 
-        return signature
+        return true
       } catch (error) {
-        console.error(`Error staking GOLD tokens on ${network}:`, error)
+        console.error("Error staking tokens:", error)
         throw error
+      } finally {
+        setIsStaking(false)
       }
     },
-    [publicKey, sendAndConfirmTransaction, fetchStakingState, network, connection, stakingProgramId, goldMintAddress],
+    [connected, publicKey, refreshStakingData],
   )
 
   // Unstake tokens
   const unstakeTokens = useCallback(
     async (amount: number) => {
-      if (!publicKey) return null
+      if (!connected || !publicKey || amount <= 0 || amount > stakedAmount) {
+        throw new Error("Cannot unstake tokens")
+      }
+
+      // Check if minimum stake duration has passed
+      if (timeRemaining > 0) {
+        throw new Error(`Cannot unstake yet. ${formattedTimeRemaining()} remaining.`)
+      }
+
+      setIsUnstaking(true)
 
       try {
-        // Convert amount to lamports (accounting for decimals)
-        const amountLamports = new BN(amount * Math.pow(10, GOLD_TOKEN.decimals))
+        // In a real implementation, we would send a transaction to the blockchain
+        // For this demo, we'll simulate it with localStorage
 
-        // Get the current network's program ID and token mint
-        const programId = stakingProgramId()
-        const mintAddress = goldMintAddress()
+        // Get current staked amount
+        const storedStakedAmount = localStorage.getItem(`${publicKey.toString()}_stakedAmount`)
+        const currentStakedAmount = storedStakedAmount ? Number.parseFloat(storedStakedAmount) : 0
 
-        // Create a transaction to call the staking program
-        const instruction = new TransactionInstruction({
-          keys: [
-            { pubkey: publicKey, isSigner: true, isWritable: true },
-            { pubkey: mintAddress, isSigner: false, isWritable: true },
-            { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
-          ],
-          programId,
-          data: Buffer.from([2, ...amountLamports.toArray("le", 8)]), // Instruction to unstake tokens
-        })
+        // Update staked amount
+        const newStakedAmount = Math.max(0, currentStakedAmount - amount)
+        localStorage.setItem(`${publicKey.toString()}_stakedAmount`, newStakedAmount.toString())
 
-        // Use versioned transactions on mainnet for better performance
-        let transaction
-
-        if (network === "mainnet-beta") {
-          // Create a versioned transaction (v0)
-          const { blockhash } = await connection.getLatestBlockhash()
-          const messageV0 = new TransactionMessage({
-            payerKey: publicKey,
-            recentBlockhash: blockhash,
-            instructions: [instruction]
-          }).compileToV0Message()
-
-          transaction = new VersionedTransaction(messageV0)
-        } else {
-          // Use legacy transaction for devnet/testnet
-          transaction = new Transaction().add(instruction)
+        // Reset stake start time if all tokens are unstaked
+        if (newStakedAmount <= 0) {
+          localStorage.removeItem(`${publicKey.toString()}_stakeStartTime`)
         }
 
-        const signature = await sendAndConfirmTransaction(transaction, {
-          onSuccess: () => {
-            // Update staking state after successful unstake
-            fetchStakingState()
-          },
-        })
+        // Refresh staking data
+        await refreshStakingData()
 
-        return signature
+        return true
       } catch (error) {
-        console.error(`Error unstaking GOLD tokens on ${network}:`, error)
+        console.error("Error unstaking tokens:", error)
         throw error
+      } finally {
+        setIsUnstaking(false)
       }
     },
-    [publicKey, sendAndConfirmTransaction, fetchStakingState, network, connection, stakingProgramId, goldMintAddress],
+    [connected, publicKey, stakedAmount, timeRemaining, formattedTimeRemaining, refreshStakingData],
   )
 
   // Claim rewards
   const claimRewards = useCallback(async () => {
-    if (!publicKey) return null
+    if (!connected || !publicKey || pendingRewards <= 0) {
+      throw new Error("No rewards to claim")
+    }
+
+    setIsClaimingRewards(true)
 
     try {
-      // Get the current network's program ID and token mint
-      const programId = stakingProgramId()
-      const mintAddress = goldMintAddress()
+      // In a real implementation, we would send a transaction to the blockchain
+      // For this demo, we'll simulate it with a delay
+      await new Promise((resolve) => setTimeout(resolve, 1500))
 
-      // Create a transaction to call the staking program
-      const instruction = new TransactionInstruction({
-        keys: [
-          { pubkey: publicKey, isSigner: true, isWritable: true },
-          { pubkey: mintAddress, isSigner: false, isWritable: true },
-          { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
-        ],
-        programId,
-        data: Buffer.from([3]), // Instruction to claim rewards
-      })
+      // Reset pending rewards
+      setPendingRewards(0)
 
-      // Use versioned transactions on mainnet for better performance
-      let transaction
+      // Update stake start time to now for future reward calculations
+      const now = Math.floor(Date.now() / 1000)
+      localStorage.setItem(`${publicKey.toString()}_stakeStartTime`, now.toString())
 
-      if (network === "mainnet-beta") {
-        // Create a versioned transaction (v0)
-        const { blockhash } = await connection.getLatestBlockhash()
-        const messageV0 = new TransactionMessage({
-          payerKey: publicKey,
-          recentBlockhash: blockhash,
-          instructions: [instruction]
-        }).compileToV0Message()
-
-        transaction = new VersionedTransaction(messageV0)
-      } else {
-        // Use legacy transaction for devnet/testnet
-        transaction = new Transaction().add(instruction)
-      }
-
-      const signature = await sendAndConfirmTransaction(transaction, {
-        onSuccess: () => {
-          // Update staking state after successful claim
-          fetchStakingState()
-        },
-      })
-
-      return signature
+      return true
     } catch (error) {
-      console.error(`Error claiming staking rewards on ${network}:`, error)
+      console.error("Error claiming rewards:", error)
       throw error
+    } finally {
+      setIsClaimingRewards(false)
     }
-  }, [publicKey, sendAndConfirmTransaction, fetchStakingState, network, connection, stakingProgramId, goldMintAddress])
+  }, [connected, publicKey, pendingRewards])
+
+  // Initial load
+  useEffect(() => {
+    refreshStakingData()
+  }, [refreshStakingData])
+
+  // Set up interval to refresh data
+  useEffect(() => {
+    const intervalId = setInterval(() => {
+      if (connected && publicKey) {
+        // Update pending rewards calculation
+        const rewards = calculatePendingRewards()
+        setPendingRewards(rewards)
+
+        // Update time remaining
+        if (stakeStartTime > 0) {
+          const now = Math.floor(Date.now() / 1000)
+          const unlockTime = stakeStartTime + MIN_STAKE_DURATION
+          const remaining = Math.max(0, unlockTime - now)
+
+          setTimeRemaining(remaining)
+        }
+      }
+    }, 5000)
+
+    return () => clearInterval(intervalId)
+  }, [connected, publicKey, calculatePendingRewards, stakeStartTime])
 
   return {
-    ...stakingState,
+    stakedAmount,
+    pendingRewards,
+    apy,
+    timeRemaining,
+    isStaking,
+    isUnstaking,
+    isClaimingRewards,
+    isLoading,
     stakeTokens,
     unstakeTokens,
     claimRewards,
-    fetchStakingState,
-    isLoading: isLoading || isProcessing,
-    error,
+    refreshStakingData,
+    formattedTimeRemaining,
   }
 }

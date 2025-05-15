@@ -1,23 +1,20 @@
-import { type NetworkType } from "@/components/NetworkContextProvider"
-
 export interface Token {
   name: string
   symbol: string
-  mint: string | { [network in NetworkType]: string }
+  mint: string
   decimals: number
   logoURI: string
   totalSupply?: number
 }
 
-// Helper function to get the correct mint address for the current network
-export function getMintAddress(token: Token, network: NetworkType): string {
-  if (typeof token.mint === 'string') {
-    return token.mint
-  }
-  return token.mint[network] || token.mint["mainnet-beta"] // Fallback to mainnet if specific network not found
+// Token addresses for different networks
+export const GOLD_MINT_ADDRESS = {
+  "mainnet-beta": "ApkBg8kzMBpVKxvgrw67vkd5KuGWqSu2GVb19eK4pump",
+  devnet: "ApkBg8kzMBpVKxvgrw67vkd5KuGWqSu2GVb19eK4pump",
+  testnet: "ApkBg8kzMBpVKxvgrw67vkd5KuGWqSu2GVb19eK4pump",
 }
 
-// Solana token - same address on all networks
+// Solana token
 export const SOL_TOKEN: Token = {
   name: "Solana",
   symbol: "SOL",
@@ -26,42 +23,37 @@ export const SOL_TOKEN: Token = {
   logoURI: "/solana-logo.png",
 }
 
-// GOLD token with network-specific addresses
+// GOLD token with the correct mint address
 export const GOLD_TOKEN: Token = {
   name: "Goldium",
   symbol: "GOLD",
-  mint: {
-    "devnet": "GoLDiumDevXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX", // Devnet address
-    "testnet": "GoLDiumTestXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX", // Testnet address
-    "mainnet-beta": "ApkBg8kzMBpVKxvgrw67vkd5KuGWqSu2GVb19eK4pump" // Mainnet address
-  },
+  mint: GOLD_MINT_ADDRESS["devnet"], // Default to devnet
   decimals: 9,
-  logoURI: "/placeholder.svg?key=drkna",
-  totalSupply: 1_000_000_000, // 1 billion tokens
+  logoURI: "/goldium-logo.png",
+  totalSupply: 1_000_000, // Updated from 1 billion to 1 million tokens
 }
 
-// USDC token with network-specific addresses
+// Function to get the correct GOLD token for the current network
+export function getGoldTokenForNetwork(network: string): Token {
+  return {
+    ...GOLD_TOKEN,
+    mint: GOLD_MINT_ADDRESS[network as keyof typeof GOLD_MINT_ADDRESS] || GOLD_MINT_ADDRESS.devnet,
+  }
+}
+
+// Additional tokens that could be added in the future
 export const USDC_TOKEN: Token = {
   name: "USD Coin",
   symbol: "USDC",
-  mint: {
-    "devnet": "4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU", // Devnet USDC
-    "testnet": "CpMah17kQEL2wqyMKt3mZBdTnZbkbfx4nqmQMFDP5vwp", // Testnet USDC
-    "mainnet-beta": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v" // Mainnet USDC
-  },
+  mint: "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
   decimals: 6,
   logoURI: "/usdc-logo.png",
 }
 
-// BONK token with network-specific addresses
 export const BONK_TOKEN: Token = {
   name: "Bonk",
   symbol: "BONK",
-  mint: {
-    "devnet": "DezXAZ8z7PnrnRJjz3wXBoRgixCa6xjnB7YaB1pPB263", // Using mainnet address for devnet for demo
-    "testnet": "DezXAZ8z7PnrnRJjz3wXBoRgixCa6xjnB7YaB1pPB263", // Using mainnet address for testnet for demo
-    "mainnet-beta": "DezXAZ8z7PnrnRJjz3wXBoRgixCa6xjnB7YaB1pPB263" // Mainnet BONK
-  },
+  mint: "DezXAZ8z7PnrnRJjz3wXBoRgixCa6xjnB7YaB1pPB263",
   decimals: 5,
   logoURI: "/bonk-token-logo.png",
 }
@@ -69,45 +61,14 @@ export const BONK_TOKEN: Token = {
 // List of all available tokens
 export const AVAILABLE_TOKENS: Token[] = [SOL_TOKEN, GOLD_TOKEN, USDC_TOKEN, BONK_TOKEN]
 
-// Program IDs with network-specific addresses
-export const PROGRAM_IDS = {
-  STAKING: {
-    "devnet": "GStKMnqHM6uJiVKGiznWSJQNuDtcMiNMM2WgaTJgr5P9",
-    "testnet": "GStKMnqHM6uJiVKGiznWSJQNuDtcMiNMM2WgaTJgr5P9",
-    "mainnet-beta": "GStKMnqHM6uJiVKGiznWSJQNuDtcMiNMM2WgaTJgr5P9"
-  },
-  FAUCET: {
-    "devnet": "FaucGo1dTkH8CjDXSFpZ7kVToKDnNXpKNYPfMJjJwHjR",
-    "testnet": "FaucGo1dTkH8CjDXSFpZ7kVToKDnNXpKNYPfMJjJwHjR",
-    "mainnet-beta": "FaucGo1dTkH8CjDXSFpZ7kVToKDnNXpKNYPfMJjJwHjR"
-  },
-  DEX: {
-    "devnet": "DexXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX",
-    "testnet": "DexXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX",
-    "mainnet-beta": "DexXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX"
-  }
-}
+// Staking program ID
+export const STAKING_PROGRAM_ID = "GStKMnqHM6uJiVKGiznWSJQNuDtcMiNMM2WgaTJgr5P9"
 
-// Helper function to get program ID for the current network
-export function getProgramId(program: keyof typeof PROGRAM_IDS, network: NetworkType): string {
-  return PROGRAM_IDS[program][network] || PROGRAM_IDS[program]["mainnet-beta"]
-}
+// Faucet program ID
+export const FAUCET_PROGRAM_ID = "FaucGo1dTkH8CjDXSFpZ7kVToKDnNXpKNYPfMJjJwHjR"
 
-// Liquidity pool IDs with network-specific addresses
+// Liquidity pool IDs
 export const LIQUIDITY_POOLS = {
-  GOLD_SOL: {
-    "devnet": "GS1dsoPnAEuBnuXvzjVrAyJRxJhiR9Jbs3VaX7JJKnY",
-    "testnet": "GS1dsoPnAEuBnuXvzjVrAyJRxJhiR9Jbs3VaX7JJKnY",
-    "mainnet-beta": "GS1dsoPnAEuBnuXvzjVrAyJRxJhiR9Jbs3VaX7JJKnY"
-  },
-  GOLD_USDC: {
-    "devnet": "GU1dcUSgMGd9Bz1QBqMrwQoogZi1kHhfzFHcPXVZmtBE",
-    "testnet": "GU1dcUSgMGd9Bz1QBqMrwQoogZi1kHhfzFHcPXVZmtBE",
-    "mainnet-beta": "GU1dcUSgMGd9Bz1QBqMrwQoogZi1kHhfzFHcPXVZmtBE"
-  }
-}
-
-// Helper function to get liquidity pool ID for the current network
-export function getLiquidityPoolId(pool: keyof typeof LIQUIDITY_POOLS, network: NetworkType): string {
-  return LIQUIDITY_POOLS[pool][network] || LIQUIDITY_POOLS[pool]["mainnet-beta"]
+  GOLD_SOL: "GS1dsoPnAEuBnuXvzjVrAyJRxJhiR9Jbs3VaX7JJKnY",
+  GOLD_USDC: "GU1dcUSgMGd9Bz1QBqMrwQoogZi1kHhfzFHcPXVZmtBE",
 }

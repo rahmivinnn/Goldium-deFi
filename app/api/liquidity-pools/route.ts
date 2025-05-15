@@ -8,7 +8,7 @@ const MOCK_POOLS = [
     name: "SOL-GOLD",
     token1: "So11111111111111111111111111111111111111112", // SOL
     token2: "GoLDium1111111111111111111111111111111111111", // GOLD
-    tvl: 500000,
+    tvl: 1250000,
     volume24h: 320000,
     fee: 0.3,
     apy: 42.5,
@@ -22,7 +22,7 @@ const MOCK_POOLS = [
     name: "GOLD-USDC",
     token1: "GoLDium1111111111111111111111111111111111111", // GOLD
     token2: "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v", // USDC
-    tvl: 300000,
+    tvl: 850000,
     volume24h: 180000,
     fee: 0.3,
     apy: 38.2,
@@ -36,7 +36,7 @@ const MOCK_POOLS = [
     name: "SOL-USDC",
     token1: "So11111111111111111111111111111111111111112", // SOL
     token2: "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v", // USDC
-    tvl: 1000000,
+    tvl: 3200000,
     volume24h: 950000,
     fee: 0.3,
     apy: 28.7,
@@ -50,7 +50,7 @@ const MOCK_POOLS = [
     name: "GOLD-BONK",
     token1: "GoLDium1111111111111111111111111111111111111", // GOLD
     token2: "DezXAZ8z7PnrnRJjz3wXBoRgixCa6xjnB7YaB1pPB263", // BONK
-    tvl: 200000,
+    tvl: 420000,
     volume24h: 125000,
     fee: 0.3,
     apy: 65.3,

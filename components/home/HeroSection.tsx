@@ -204,7 +204,7 @@ export default function HeroSection() {
               <span className="text-amber-500 font-medium">GOLD Token Contract Address</span>
             </div>
             <div className="mt-2 bg-gray-900 rounded px-4 py-2 font-mono text-sm text-gray-300">
-              APKBq8kzMBpVKxvqrw67vkd6KuGWqSu2GVb19eK4pump
+              ApkBg8kzMBpVKxvgrw67vkd5KuGWqSu2GVb19eK4pump
             </div>
           </div>
         </motion.div>

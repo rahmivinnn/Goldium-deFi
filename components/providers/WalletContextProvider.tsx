@@ -1,10 +1,8 @@
 "use client"
 
-import { useCallback } from "react"
+import type React from "react"
 
-import { createContext, useContext, useState, useEffect, type ReactNode, type FC } from "react"
-import { useLocalStorage } from "@/hooks/use-local-storage"
-import { useToast } from "@/components/ui/use-toast"
+import { useEffect, useMemo, useState, createContext, useContext, type ReactNode, useCallback } from "react"
 import {
   ConnectionProvider,
   WalletProvider,
@@ -12,20 +10,42 @@ import {
   useWallet as useSolanaWallet,
 } from "@solana/wallet-adapter-react"
 import { WalletModalProvider } from "@solana/wallet-adapter-react-ui"
-import { PhantomWalletAdapter, SolflareWalletAdapter } from "@solana/wallet-adapter-wallets"
-import { clusterApiUrl, LAMPORTS_PER_SOL } from "@solana/web3.js"
-import { TOKEN_PROGRAM_ID } from "@solana/spl-token"
-import { GOLD_TOKEN } from "@/constants/tokens"
-import { motion } from "framer-motion"
+import { PhantomWalletAdapter, SolflareWalletAdapter, TorusWalletAdapter } from "@solana/wallet-adapter-wallets"
+import { useToast } from "@/components/ui/use-toast"
+import { useNetwork } from "@/components/providers/NetworkContextProvider"
+import { WalletAdapterNetwork } from "@solana/wallet-adapter-base"
+import { clusterApiUrl } from "@solana/web3.js"
 
 // Import the wallet adapter styles
 import "@solana/wallet-adapter-react-ui/styles.css"
 
-// Re-export the useWallet hook from @solana/wallet-adapter-react
-export { useSolanaWallet as useWallet }
+// Transaction context
+type Transaction = {
+  id: string
+  fromToken: string
+  toToken: string
+  fromAmount: number
+  toAmount: number
+  status: "pending" | "confirmed" | "failed"
+  timestamp: number
+  signature?: string
+}
 
-// Define WalletType
-export type WalletType = "phantom" | "solflare" | "metamask"
+type TransactionContextType = {
+  transactions: Transaction[]
+  addTransaction: (transaction: Omit<Transaction, "id" | "timestamp">) => void
+  updateTransaction: (id: string, updates: Partial<Transaction>) => void
+  clearTransactions: () => void
+}
+
+const TransactionContext = createContext<TransactionContextType>({
+  transactions: [],
+  addTransaction: () => {},
+  updateTransaction: () => {},
+  clearTransactions: () => {},
+})
+
+export const useTransactions = () => useContext(TransactionContext)
 
 // Theme context
 type ThemeContextType = {
@@ -155,237 +175,154 @@ const LanguageContext = createContext<LanguageContextType>({
 
 export const useLanguage = () => useContext(LanguageContext)
 
-// Transaction context
-type Transaction = {
-  id: string
-  fromToken: string
-  toToken: string
-  fromAmount: number
-  toAmount: number
-  status: "pending" | "confirmed" | "failed"
-  timestamp: number
-  signature?: string
+interface WalletContextType {
+  wallets: any[]
+  isConnecting: boolean
+  setIsConnecting: (isConnecting: boolean) => void
 }
 
-type TransactionContextType = {
-  transactions: Transaction[]
-  addTransaction: (transaction: Omit<Transaction, "id" | "timestamp">) => void
-  updateTransaction: (id: string, updates: Partial<Transaction>) => void
-  clearTransactions: () => void
+const WalletContext = createContext<WalletContextType | undefined>(undefined)
+
+export function useWalletContext() {
+  const context = useContext(WalletContext)
+  if (!context) {
+    throw new Error("useWalletContext must be used within a WalletContextProvider")
+  }
+  return context
 }
-
-const TransactionContext = createContext<TransactionContextType>({
-  transactions: [],
-  addTransaction: () => {},
-  updateTransaction: () => {},
-  clearTransactions: () => {},
-})
-
-export const useTransactions = () => useContext(TransactionContext)
-
-// Wallet balance context
-type WalletBalanceContextType = {
-  solBalance: number | null
-  goldBalance: number | null
-  isLoading: boolean
-  refreshBalances: () => Promise<void>
-  lastUpdated: number
-}
-
-const WalletBalanceContext = createContext<WalletBalanceContextType>({
-  solBalance: null,
-  goldBalance: null,
-  isLoading: false,
-  refreshBalances: async () => {},
-  lastUpdated: 0,
-})
-
-export const useWalletBalance = () => useContext(WalletBalanceContext)
 
 interface WalletContextProviderProps {
   children: ReactNode
+  network?: "devnet" | "testnet" | "mainnet-beta"
 }
 
-const WalletBalanceProvider: FC<{ children: ReactNode }> = ({ children }) => {
-  const { connection } = useConnection()
-  const { publicKey } = useSolanaWallet()
-  const [solBalance, setSolBalance] = useState<number | null>(null)
-  const [goldBalance, setGoldBalance] = useState<number | null>(null)
-  const [isLoading, setIsLoading] = useState(false)
-  const [lastUpdated, setLastUpdated] = useState(0)
-  const { toast } = useToast()
+export function WalletContextProvider({ children }: { children: React.ReactNode }) {
+  const { network } = useNetwork()
+  const [isConnecting, setIsConnecting] = useState(false)
 
-  const refreshBalances = async () => {
-    if (!publicKey) {
-      setSolBalance(null)
-      setGoldBalance(null)
-      return
+  // Set network to WalletAdapterNetwork format
+  const walletNetwork = useMemo(() => {
+    switch (network) {
+      case "mainnet-beta":
+        return WalletAdapterNetwork.Mainnet
+      case "testnet":
+        return WalletAdapterNetwork.Testnet
+      case "devnet":
+      default:
+        return WalletAdapterNetwork.Devnet
     }
+  }, [network])
 
-    setIsLoading(true)
-    try {
-      // Get SOL balance
-      const lamports = await connection.getBalance(publicKey)
-      const solBalanceValue = lamports / LAMPORTS_PER_SOL
-
-      // Animate SOL balance update if it changed
-      if (solBalance !== null && solBalanceValue !== solBalance) {
-        animateBalanceChange("SOL", solBalanceValue)
-      }
-      setSolBalance(solBalanceValue)
-
-      // Get GOLD token balance
-      const tokenAccounts = await connection.getParsedTokenAccountsByOwner(publicKey, {
-        programId: TOKEN_PROGRAM_ID,
-      })
-
-      const goldTokenAccount = tokenAccounts.value.find(
-        (account) => account.account.data.parsed.info.mint === GOLD_TOKEN.mint,
-      )
-
-      if (goldTokenAccount) {
-        const goldBalanceValue = goldTokenAccount.account.data.parsed.info.tokenAmount.uiAmount
-
-        // Animate GOLD balance update if it changed
-        if (goldBalance !== null && goldBalanceValue !== goldBalance) {
-          animateBalanceChange("GOLD", goldBalanceValue)
-        }
-        setGoldBalance(goldBalanceValue)
-      } else {
-        setGoldBalance(0)
-      }
-
-      setLastUpdated(Date.now())
-    } catch (error) {
-      console.error("Error refreshing balances:", error)
-    } finally {
-      setIsLoading(false)
-    }
-  }
-
-  const animateBalanceChange = (token: string, newValue: number) => {
-    const oldValue = token === "SOL" ? solBalance : goldBalance
-    if (oldValue === null) return
-
-    const isIncrease = newValue > oldValue
-
-    toast({
-      title: `${token} Balance ${isIncrease ? "Increased" : "Decreased"}`,
-      description: (
-        <div className="flex items-center">
-          <span>{oldValue.toFixed(4)} → </span>
-          <motion.span
-            initial={{ color: isIncrease ? "#10B981" : "#EF4444" }}
-            animate={{ color: "white" }}
-            transition={{ duration: 2 }}
-            className="font-bold ml-1"
-          >
-            {newValue.toFixed(4)}
-          </motion.span>
-        </div>
-      ),
-      variant: isIncrease ? "success" : "default",
-    })
-  }
-
-  // Refresh balances when wallet connects or changes
-  useEffect(() => {
-    refreshBalances()
-  }, [publicKey, connection])
-
-  // Auto-refresh balances every 10 seconds
-  useEffect(() => {
-    const intervalId = setInterval(() => {
-      if (publicKey) {
-        refreshBalances()
-      }
-    }, 10000)
-
-    return () => clearInterval(intervalId)
-  }, [publicKey, connection])
-
-  return (
-    <WalletBalanceContext.Provider value={{ solBalance, goldBalance, isLoading, refreshBalances, lastUpdated }}>
-      {children}
-    </WalletBalanceContext.Provider>
-  )
-}
-
-export const WalletContextProvider: FC<WalletContextProviderProps> = ({ children }) => {
-  // Theme state
-  const [theme, setTheme] = useLocalStorage<"dark" | "light">("goldium-theme", "dark")
-
-  // Language state
-  const [language, setLanguage] = useLocalStorage<Language>("goldium-language", "en")
-  const t = (key: string) => translations[language][key] || key
-
-  // Transaction state
-  const [transactions, setTransactions] = useLocalStorage<Transaction[]>("goldium-transactions", [])
-
-  const addTransaction = (transaction: Omit<Transaction, "id" | "timestamp">) => {
-    const newTransaction = {
-      ...transaction,
-      id: `tx-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`,
-      timestamp: Date.now(),
-    }
-    setTransactions([newTransaction, ...transactions])
-  }
-
-  const updateTransaction = (id: string, updates: Partial<Transaction>) => {
-    setTransactions(transactions.map((tx) => (tx.id === id ? { ...tx, ...updates } : tx)))
-  }
-
-  const clearTransactions = () => {
-    setTransactions([])
-  }
-
-  // The network can be set to 'devnet', 'testnet', or 'mainnet-beta'
-  const endpoint = clusterApiUrl("mainnet-beta")
-  const { toast } = useToast()
+  // Generate RPC endpoint based on network
+  const endpoint = useMemo(() => clusterApiUrl(walletNetwork), [walletNetwork])
 
   // Initialize wallet adapters
-  const wallets = [new PhantomWalletAdapter(), new SolflareWalletAdapter()]
+  const wallets = useMemo(
+    () => [new PhantomWalletAdapter(), new SolflareWalletAdapter(), new TorusWalletAdapter()],
+    [walletNetwork],
+  )
 
-  // Handle wallet connection events
-  const onWalletConnect = useCallback(() => {
-    toast({
-      title: "Wallet Connected",
-      description: "Your wallet has been successfully connected",
-      variant: "default",
-    })
-  }, [toast])
-
-  const onWalletDisconnect = useCallback(() => {
-    toast({
-      title: "Wallet Disconnected",
-      description: "Your wallet has been disconnected",
-      variant: "default",
-    })
-  }, [toast])
+  // Expose wallet context
+  const value = {
+    wallets,
+    isConnecting,
+    setIsConnecting,
+  }
 
   return (
-    <ThemeContext.Provider value={{ theme, setTheme }}>
-      <LanguageContext.Provider value={{ language, setLanguage, t }}>
-        <TransactionContext.Provider value={{ transactions, addTransaction, updateTransaction, clearTransactions }}>
-          <ConnectionProvider endpoint={endpoint}>
-            <WalletProvider
-              wallets={wallets}
-              autoConnect
-              onError={(error) => {
-                toast({
-                  title: "Wallet Error",
-                  description: error.message,
-                  variant: "destructive",
-                })
-              }}
-            >
-              <WalletModalProvider>
-                <WalletBalanceProvider>{children}</WalletBalanceProvider>
-              </WalletModalProvider>
-            </WalletProvider>
-          </ConnectionProvider>
-        </TransactionContext.Provider>
-      </LanguageContext.Provider>
-    </ThemeContext.Provider>
+    <ConnectionProvider endpoint={endpoint}>
+      <WalletProvider wallets={wallets} autoConnect>
+        <WalletModalProvider value={value}>{children}</WalletModalProvider>
+      </WalletProvider>
+    </ConnectionProvider>
   )
+}
+
+// Custom hook for wallet connection status with toast notifications
+export function useWalletStatus() {
+  const { connected, connecting, disconnecting, publicKey } = useSolanaWallet()
+  const { connection } = useConnection()
+  const { toast } = useToast()
+
+  const [balance, setBalance] = useState<number | null>(null)
+  const [isLoadingBalance, setIsLoadingBalance] = useState(false)
+
+  // Fetch SOL balance
+  const fetchBalance = async () => {
+    if (!publicKey || !connection) return null
+
+    try {
+      setIsLoadingBalance(true)
+      const balance = await connection.getBalance(publicKey)
+      const solBalance = balance / 10 ** 9 // Convert lamports to SOL
+      setBalance(solBalance)
+      return solBalance
+    } catch (error) {
+      console.error("Error fetching balance:", error)
+      return null
+    } finally {
+      setIsLoadingBalance(false)
+    }
+  }
+
+  // Show toast notifications for wallet status changes
+  useEffect(() => {
+    if (connected) {
+      toast({
+        title: "Wallet Connected",
+        description: `Connected to ${publicKey?.toString().slice(0, 6)}...${publicKey?.toString().slice(-4)}`,
+      })
+      fetchBalance()
+    }
+  }, [connected, publicKey, toast])
+
+  return {
+    connected,
+    connecting,
+    disconnecting,
+    publicKey,
+    balance,
+    isLoadingBalance,
+    fetchBalance,
+  }
+}
+
+export const useWallet = useWalletStatus
+export const useWalletBalance = () => {
+  const { connection } = useConnection()
+  const { publicKey, connected } = useSolanaWallet()
+  const [balances, setBalances] = useState<{ [key: string]: number }>({})
+  const [isLoading, setIsLoading] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  const fetchBalances = useCallback(async () => {
+    if (!publicKey || !connected) return
+
+    setIsLoading(true)
+    setError(null)
+
+    try {
+      const solBalance = (await connection.getBalance(publicKey)) / 10 ** 9
+      setBalances((prev) => ({ ...prev, SOL: solBalance }))
+
+      setIsLoading(false)
+    } catch (error: any) {
+      console.error("Failed to fetch balances", error)
+      setError(error.message || "Failed to fetch balances")
+      setIsLoading(false)
+    }
+  }, [connection, publicKey, connected])
+
+  useEffect(() => {
+    if (publicKey && connected) {
+      fetchBalances()
+    }
+  }, [publicKey, connected, fetchBalances])
+
+  return {
+    balances,
+    isLoading,
+    error,
+    refreshBalances: fetchBalances,
+  }
 }

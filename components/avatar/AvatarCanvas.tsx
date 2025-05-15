@@ -623,7 +623,7 @@ export default function AvatarCanvas({ options }: AvatarCanvasProps) {
 
         {/* Token count badge */}
         <div className="absolute top-4 right-4 bg-gradient-to-r from-yellow-600 to-amber-800 px-3 py-1 rounded-full text-black font-bold text-sm">
-          {formatTokenCount(1_000_000_000)} GOLD
+          {formatTokenCount(1_000_000)} GOLD
         </div>
       </motion.div>
     </div>

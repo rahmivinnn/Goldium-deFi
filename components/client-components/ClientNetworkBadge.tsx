@@ -26,7 +26,7 @@ export default function ClientNetworkBadge() {
   // Network-specific colors
   const getNetworkColor = () => {
     switch (network) {
-      case "mainnet":
+      case "mainnet-beta":
         return "bg-green-500"
       case "testnet":
         return "bg-yellow-500"
