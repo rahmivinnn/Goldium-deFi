@@ -2,60 +2,41 @@
 
 import { useState, useEffect, useCallback } from "react"
 import { useConnection, useWallet } from "@solana/wallet-adapter-react"
-import { PublicKey, SystemProgram, Transaction, TransactionInstruction } from "@solana/web3.js"
 import { useTransaction } from "./useTransaction"
-import { BN } from "bn.js"
-import { toast } from "@/components/ui/use-toast"
-
-// Simulated DEX program ID - in a real implementation, this would be the actual program ID
-const DEX_PROGRAM_ID = new PublicKey("DexXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX")
-
-interface PoolData {
-  tvl: number
-  volume24h: number
-  fees24h: number
-  apy: number
-  tokenAReserve: number
-  tokenBReserve: number
-}
-
-interface UserPoolShare {
-  lpTokens: number
-  percentage: number
-  value: number
-  earnedFees: number
-}
-
-interface PoolState {
-  isLoading: boolean
-  userLpBalance: number
-  poolShare: number
-  totalValueLocked: number
-  earnedFees: number
-  isAddingLiquidity: boolean
-  isRemovingLiquidity: boolean
-}
+import { useToast } from "@/components/ui/use-toast"
+import { useNetwork } from "@/components/providers/NetworkContextProvider"
+import { useWalletBalance } from "./useWalletBalance"
+import { GOLD_TOKEN } from "@/constants/tokens"
 
 export function useLiquidityPool(tokenMint: string) {
   const { connection } = useConnection()
-  const { publicKey } = useWallet()
-  const { sendTransaction, isPending } = useTransaction(connection)
+  const { publicKey, connected } = useWallet()
   const { sendAndConfirmTransaction, isProcessing } = useTransaction()
+  const { network } = useNetwork()
+  const { refreshBalances, balances } = useWalletBalance()
+  const { toast } = useToast()
 
-  const [poolData, setPoolData] = useState<PoolData | null>(null)
-  const [userPoolShare, setUserPoolShare] = useState<UserPoolShare | null>(null)
+  const [poolData, setPoolData] = useState<{
+    tvl: number
+    volume24h: number
+    fees24h: number
+    apy: number
+    tokenAReserve: number
+    tokenBReserve: number
+  } | null>(null)
+
+  const [userPoolShare, setUserPoolShare] = useState<{
+    lpTokens: number
+    percentage: number
+    value: number
+    earnedFees: number
+  } | null>(null)
+
   const [isLoading, setIsLoading] = useState<boolean>(false)
   const [error, setError] = useState<string | null>(null)
-
-  const [state, setState] = useState<PoolState>({
-    isLoading: true,
-    userLpBalance: 0,
-    poolShare: 0,
-    totalValueLocked: 0,
-    earnedFees: 0,
-    isAddingLiquidity: false,
-    isRemovingLiquidity: false,
-  })
+  const [isAddingLiquidity, setIsAddingLiquidity] = useState(false)
+  const [isRemovingLiquidity, setIsRemovingLiquidity] = useState(false)
+  const [isClaimingFees, setIsClaimingFees] = useState(false)
 
   // Function to fetch pool data
   const fetchPoolData = useCallback(async () => {
@@ -63,61 +44,51 @@ export function useLiquidityPool(tokenMint: string) {
 
     try {
       setIsLoading(true)
-      setState((prev) => ({ ...prev, isLoading: true }))
+      setError(null)
 
-      // In a real implementation, you would fetch this data from the liquidity pool
-      // For now, we'll use mock data
-      // In a real implementation, this would fetch the pool data from the DEX
-      // For now, we'll simulate with a fetch from our API
-      const response = await fetch(`/api/liquidity-pools?mint=${tokenMint}`)
-      if (!response.ok) throw new Error("Failed to fetch pool data")
+      // For demo purposes, we'll use mock data
+      // In a real implementation, you would fetch this from the blockchain
 
-      const data = await response.json()
+      // Simulate API call delay
+      await new Promise((resolve) => setTimeout(resolve, 500))
+
+      // Set pool data based on network
+      const poolTvl = network === "mainnet-beta" ? 1250000 : network === "testnet" ? 500000 : 250000
 
       setPoolData({
-        tvl: data.tvl || 0,
-        volume24h: data.volume24h || 0,
-        fees24h: data.fees24h || 0,
-        apy: data.apy || 0,
-        tokenAReserve: data.tokenAReserve || 0,
-        tokenBReserve: data.tokenBReserve || 0,
+        tvl: poolTvl,
+        volume24h: poolTvl * 0.25, // 25% of TVL
+        fees24h: poolTvl * 0.25 * 0.003, // 0.3% fee on volume
+        apy: network === "mainnet-beta" ? 12.5 : network === "testnet" ? 15 : 20, // Higher APY on devnet
+        tokenAReserve: poolTvl * 0.5, // 50% of TVL in token A
+        tokenBReserve: (poolTvl * 0.5) / 100, // 50% of TVL in token B (assuming 1:100 price ratio)
       })
 
       // If wallet is connected, fetch user's pool share
-      if (publicKey) {
-        const userResponse = await fetch(`/api/liquidity-pools/user?mint=${tokenMint}&wallet=${publicKey.toString()}`)
-        if (userResponse.ok) {
-          const userData = await userResponse.json()
+      if (connected && publicKey) {
+        // Get user's LP tokens from localStorage
+        const userLpTokens = localStorage.getItem(`${publicKey.toString()}_lpTokens`) || "0"
+        const lpTokens = Number(userLpTokens)
 
-          setUserPoolShare({
-            lpTokens: userData.lpTokens || 0,
-            percentage: userData.percentage || 0,
-            value: userData.value || 0,
-            earnedFees: userData.earnedFees || 0,
-          })
-        }
+        // Calculate user's pool share
+        const percentage = lpTokens > 0 ? (lpTokens / 10000) * 100 : 0 // Assuming 10,000 total LP tokens
+        const value = (percentage * poolTvl) / 100
+        const earnedFees = value * 0.003 * 7 // Assuming 0.3% fee and 7 days of earnings
+
+        setUserPoolShare({
+          lpTokens,
+          percentage,
+          value,
+          earnedFees,
+        })
+      } else {
+        setUserPoolShare(null)
       }
 
       setError(null)
-      const mockData = {
-        userLpBalance: 10.5,
-        poolShare: 0.02, // 2%
-        totalValueLocked: 500000,
-        earnedFees: 25.75,
-      }
-
-      setState((prev) => ({
-        ...prev,
-        isLoading: false,
-        userLpBalance: mockData.userLpBalance,
-        poolShare: mockData.poolShare,
-        totalValueLocked: mockData.totalValueLocked,
-        earnedFees: mockData.earnedFees,
-      }))
-    } catch (error) {
+    } catch (error: any) {
       console.error("Error fetching pool data:", error)
       setError("Failed to fetch pool data")
-      setState((prev) => ({ ...prev, isLoading: false }))
       toast({
         title: "Error",
         description: "Failed to fetch liquidity pool data",
@@ -125,9 +96,8 @@ export function useLiquidityPool(tokenMint: string) {
       })
     } finally {
       setIsLoading(false)
-      setState((prev) => ({ ...prev, isLoading: false }))
     }
-  }, [tokenMint, publicKey])
+  }, [tokenMint, publicKey, connected, network, toast])
 
   // Initial fetch and polling
   useEffect(() => {
@@ -140,210 +110,215 @@ export function useLiquidityPool(tokenMint: string) {
     return () => clearInterval(interval)
   }, [fetchPoolData])
 
-  // Fetch pool data on mount and when wallet changes
-  useEffect(() => {
-    fetchPoolData()
-
-    // Set up interval to refresh data
-    const intervalId = setInterval(fetchPoolData, 10000) // Every 10 seconds
-
-    return () => clearInterval(intervalId)
-  }, [fetchPoolData])
-
   // Add liquidity
   const addLiquidity = useCallback(
     async (amount: number) => {
-      if (!publicKey || !tokenMint) return null
-
-      try {
-        // Convert amount to lamports
-        const amountLamports = new BN(amount * 1e9)
-
-        // Create a transaction to call the DEX program
-        const instruction = new TransactionInstruction({
-          keys: [
-            { pubkey: publicKey, isSigner: true, isWritable: true },
-            { pubkey: new PublicKey(tokenMint), isSigner: false, isWritable: true },
-            { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
-          ],
-          programId: DEX_PROGRAM_ID,
-          data: Buffer.from([1, ...amountLamports.toArray("le", 8)]), // Instruction to add liquidity
+      if (!connected || !publicKey) {
+        toast({
+          title: "Error",
+          description: "Wallet not connected",
+          variant: "destructive",
         })
-
-        const transaction = new Transaction().add(instruction)
-
-        const signature = await sendAndConfirmTransaction(transaction, {
-          onSuccess: () => {
-            // Update pool data after successful operation
-            fetchPoolData()
-          },
-        })
-
-        return signature
-      } catch (error) {
-        console.error("Error adding liquidity:", error)
-        throw error
-      }
-    },
-    [publicKey, tokenMint, sendAndConfirmTransaction, fetchPoolData],
-  )
-
-  // Function to add liquidity
-  const addLiquidityOld = useCallback(
-    async (tokenAAmount: number, tokenBAmount: number) => {
-      if (!publicKey) return null
-
-      try {
-        setState((prev) => ({ ...prev, isAddingLiquidity: true }))
-
-        // Create a transaction to add liquidity
-        // This is a simplified version. In a real implementation, you would use the actual pool program
-        const transaction = new Transaction()
-        // Add instructions to add liquidity
-
-        // Send the transaction
-        const signature = await sendTransaction(transaction, {
-          onSuccess: () => {
-            toast({
-              title: "Liquidity Added",
-              description: "You have successfully added liquidity to the pool.",
-            })
-            fetchPoolData() // Refresh pool data
-          },
-        })
-
-        setState((prev) => ({ ...prev, isAddingLiquidity: false }))
-        return signature
-      } catch (error) {
-        console.error("Error adding liquidity:", error)
-        setState((prev) => ({ ...prev, isAddingLiquidity: false }))
         return null
       }
+
+      // Check if user has enough GOLD
+      const goldBalance = balances[GOLD_TOKEN.symbol] || 0
+      if (goldBalance < amount) {
+        toast({
+          title: "Error",
+          description: "Insufficient GOLD balance",
+          variant: "destructive",
+        })
+        return null
+      }
+
+      try {
+        setIsAddingLiquidity(true)
+        setError(null)
+
+        // Simulate transaction delay
+        await new Promise((resolve) => setTimeout(resolve, 1500))
+
+        // Update user's LP tokens in localStorage
+        const currentLpTokens = localStorage.getItem(`${publicKey.toString()}_lpTokens`) || "0"
+        const newLpTokens = Number(currentLpTokens) + amount * 10 // 1 GOLD = 10 LP tokens for demo
+        localStorage.setItem(`${publicKey.toString()}_lpTokens`, newLpTokens.toString())
+
+        // Update user's GOLD balance
+        const currentGoldBalance = localStorage.getItem(`${publicKey.toString()}_goldBalance`) || "0"
+        const newGoldBalance = Math.max(0, Number(currentGoldBalance) - amount)
+        localStorage.setItem(`${publicKey.toString()}_goldBalance`, newGoldBalance.toString())
+
+        // Refresh balances
+        refreshBalances()
+
+        // Refresh pool data
+        fetchPoolData()
+
+        toast({
+          title: "Success",
+          description: `Added ${amount} GOLD to the liquidity pool`,
+        })
+
+        return "mock_transaction_signature"
+      } catch (error: any) {
+        console.error("Error adding liquidity:", error)
+        setError(error.message || "Failed to add liquidity")
+        toast({
+          title: "Error",
+          description: error.message || "Failed to add liquidity",
+          variant: "destructive",
+        })
+        return null
+      } finally {
+        setIsAddingLiquidity(false)
+      }
     },
-    [publicKey, sendTransaction, fetchPoolData],
+    [connected, publicKey, fetchPoolData, toast, refreshBalances, balances],
   )
 
   // Remove liquidity
   const removeLiquidity = useCallback(
     async (amount: number) => {
-      if (!publicKey || !tokenMint) return null
-
-      try {
-        // Convert amount to lamports
-        const amountLamports = new BN(amount * 1e9)
-
-        // Create a transaction to call the DEX program
-        const instruction = new TransactionInstruction({
-          keys: [
-            { pubkey: publicKey, isSigner: true, isWritable: true },
-            { pubkey: new PublicKey(tokenMint), isSigner: false, isWritable: true },
-            { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
-          ],
-          programId: DEX_PROGRAM_ID,
-          data: Buffer.from([2, ...amountLamports.toArray("le", 8)]), // Instruction to remove liquidity
+      if (!connected || !publicKey) {
+        toast({
+          title: "Error",
+          description: "Wallet not connected",
+          variant: "destructive",
         })
-
-        const transaction = new Transaction().add(instruction)
-
-        const signature = await sendAndConfirmTransaction(transaction, {
-          onSuccess: () => {
-            // Update pool data after successful operation
-            fetchPoolData()
-          },
-        })
-
-        return signature
-      } catch (error) {
-        console.error("Error removing liquidity:", error)
-        throw error
-      }
-    },
-    [publicKey, tokenMint, sendAndConfirmTransaction, fetchPoolData],
-  )
-
-  // Function to remove liquidity
-  const removeLiquidityOld = useCallback(
-    async (lpAmount: number) => {
-      if (!publicKey) return null
-
-      try {
-        setState((prev) => ({ ...prev, isRemovingLiquidity: true }))
-
-        // Create a transaction to remove liquidity
-        // This is a simplified version. In a real implementation, you would use the actual pool program
-        const transaction = new Transaction()
-        // Add instructions to remove liquidity
-
-        // Send the transaction
-        const signature = await sendTransaction(transaction, {
-          onSuccess: () => {
-            toast({
-              title: "Liquidity Removed",
-              description: "You have successfully removed liquidity from the pool.",
-            })
-            fetchPoolData() // Refresh pool data
-          },
-        })
-
-        setState((prev) => ({ ...prev, isRemovingLiquidity: false }))
-        return signature
-      } catch (error) {
-        console.error("Error removing liquidity:", error)
-        setState((prev) => ({ ...prev, isRemovingLiquidity: false }))
         return null
       }
+
+      // Check if user has enough LP tokens
+      const currentLpTokens = Number(localStorage.getItem(`${publicKey.toString()}_lpTokens`) || "0")
+      if (currentLpTokens < amount) {
+        toast({
+          title: "Error",
+          description: "Insufficient LP tokens",
+          variant: "destructive",
+        })
+        return null
+      }
+
+      try {
+        setIsRemovingLiquidity(true)
+        setError(null)
+
+        // Simulate transaction delay
+        await new Promise((resolve) => setTimeout(resolve, 1500))
+
+        // Update user's LP tokens in localStorage
+        const newLpTokens = Math.max(0, currentLpTokens - amount)
+        localStorage.setItem(`${publicKey.toString()}_lpTokens`, newLpTokens.toString())
+
+        // Update user's GOLD balance (1 LP token = 0.1 GOLD for demo)
+        const goldAmount = amount * 0.1
+        const currentGoldBalance = localStorage.getItem(`${publicKey.toString()}_goldBalance`) || "0"
+        const newGoldBalance = Number(currentGoldBalance) + goldAmount
+        localStorage.setItem(`${publicKey.toString()}_goldBalance`, newGoldBalance.toString())
+
+        // Refresh balances
+        refreshBalances()
+
+        // Refresh pool data
+        fetchPoolData()
+
+        toast({
+          title: "Success",
+          description: `Removed ${amount} LP tokens from the liquidity pool`,
+        })
+
+        return "mock_transaction_signature"
+      } catch (error: any) {
+        console.error("Error removing liquidity:", error)
+        setError(error.message || "Failed to remove liquidity")
+        toast({
+          title: "Error",
+          description: error.message || "Failed to remove liquidity",
+          variant: "destructive",
+        })
+        return null
+      } finally {
+        setIsRemovingLiquidity(false)
+      }
     },
-    [publicKey, sendTransaction, fetchPoolData],
+    [connected, publicKey, fetchPoolData, toast, refreshBalances],
   )
 
   // Claim fees
   const claimFees = useCallback(async () => {
-    if (!publicKey || !tokenMint) return null
+    if (!connected || !publicKey) {
+      toast({
+        title: "Error",
+        description: "Wallet not connected",
+        variant: "destructive",
+      })
+      return null
+    }
+
+    // Check if user has earned fees
+    if (!userPoolShare || userPoolShare.earnedFees <= 0) {
+      toast({
+        title: "Error",
+        description: "No fees to claim",
+        variant: "destructive",
+      })
+      return null
+    }
 
     try {
-      // Create a transaction to call the DEX program
-      const instruction = new TransactionInstruction({
-        keys: [
-          { pubkey: publicKey, isSigner: true, isWritable: true },
-          { pubkey: new PublicKey(tokenMint), isSigner: false, isWritable: true },
-          { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
-        ],
-        programId: DEX_PROGRAM_ID,
-        data: Buffer.from([3]), // Instruction to claim fees
+      setIsClaimingFees(true)
+      setError(null)
+
+      // Simulate transaction delay
+      await new Promise((resolve) => setTimeout(resolve, 1500))
+
+      // Update user's GOLD balance
+      const currentGoldBalance = localStorage.getItem(`${publicKey.toString()}_goldBalance`) || "0"
+      const newGoldBalance = Number(currentGoldBalance) + userPoolShare.earnedFees
+      localStorage.setItem(`${publicKey.toString()}_goldBalance`, newGoldBalance.toString())
+
+      // Reset earned fees
+      setUserPoolShare({
+        ...userPoolShare,
+        earnedFees: 0,
       })
 
-      const transaction = new Transaction().add(instruction)
+      // Refresh balances
+      refreshBalances()
 
-      const signature = await sendAndConfirmTransaction(transaction, {
-        onSuccess: () => {
-          // Update pool data after successful operation
-          fetchPoolData()
-        },
+      toast({
+        title: "Success",
+        description: `Claimed ${userPoolShare.earnedFees.toFixed(2)} GOLD in fees`,
       })
 
-      return signature
-    } catch (error) {
+      return "mock_transaction_signature"
+    } catch (error: any) {
       console.error("Error claiming fees:", error)
-      throw error
+      setError(error.message || "Failed to claim fees")
+      toast({
+        title: "Error",
+        description: error.message || "Failed to claim fees",
+        variant: "destructive",
+      })
+      return null
+    } finally {
+      setIsClaimingFees(false)
     }
-  }, [publicKey, tokenMint, sendAndConfirmTransaction, fetchPoolData])
-
-  // Format pool share
-  const formattedPoolShare = useCallback(() => {
-    return `${(state.poolShare * 100).toFixed(4)}%`
-  }, [state.poolShare])
+  }, [connected, publicKey, userPoolShare, toast, refreshBalances])
 
   return {
     poolData,
     userPoolShare,
+    isLoading: isLoading || isProcessing,
+    isAddingLiquidity,
+    isRemovingLiquidity,
+    isClaimingFees,
+    error,
     addLiquidity,
     removeLiquidity,
     claimFees,
     fetchPoolData,
-    isLoading: isLoading || isProcessing,
-    error,
-    ...state,
-    refreshPoolData: fetchPoolData,
-    formattedPoolShare,
   }
 }

@@ -2,7 +2,7 @@
 
 import { useRef, useEffect, useState } from "react"
 import dynamic from "next/dynamic"
-import { isBrowser } from "@/utils/browser"
+import { isBrowser } from "@/utils/dom-safe"
 
 // Dynamically import Three.js components to prevent multiple instances
 const DynamicCanvas = dynamic(() => import("@react-three/fiber").then((mod) => mod.Canvas), { ssr: false })
@@ -28,11 +28,8 @@ export default function ThreeScene({ scrollY = 0 }) {
   // Only run on client-side
   useEffect(() => {
     if (!isBrowser) {
-      console.log("ThreeScene: Not in browser environment, skipping initialization")
       return
     }
-
-    console.log("ThreeScene: Initializing...")
 
     try {
       // Check if WebGL is supported
@@ -43,7 +40,6 @@ export default function ThreeScene({ scrollY = 0 }) {
         throw new Error("WebGL not supported")
       }
 
-      console.log("ThreeScene: WebGL is supported")
       setIsMounted(true)
       setIsLoading(false)
     } catch (err) {
@@ -53,7 +49,6 @@ export default function ThreeScene({ scrollY = 0 }) {
     }
 
     return () => {
-      console.log("ThreeScene: Unmounting")
       setIsMounted(false)
     }
   }, [])

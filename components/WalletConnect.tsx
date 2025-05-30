@@ -38,6 +38,14 @@ export function WalletConnect() {
     setIsDropdownOpen((prev) => !prev)
   }
 
+  // Safely format balance with fallback to 0
+  const formatBalance = (balance: number | undefined, decimals = 4) => {
+    if (balance === undefined || balance === null || isNaN(balance)) {
+      return "0.00"
+    }
+    return balance.toFixed(decimals)
+  }
+
   // Render error state
   if (error) {
     return (
@@ -108,12 +116,12 @@ export function WalletConnect() {
                     <span className="text-sm text-gray-400">SOL Balance</span>
                     <motion.span
                       className="font-medium text-white"
-                      key={solBalance}
+                      key={isLoading ? "loading-sol" : `sol-${solBalance}`}
                       initial={{ opacity: 0.8, scale: 0.95 }}
                       animate={{ opacity: 1, scale: 1 }}
                       transition={{ duration: 0.3 }}
                     >
-                      {isLoading ? "..." : solBalance.toFixed(4)}
+                      {isLoading ? "..." : formatBalance(solBalance)}
                     </motion.span>
                   </div>
 
@@ -121,12 +129,12 @@ export function WalletConnect() {
                     <span className="text-sm text-gray-400">GOLD Balance</span>
                     <motion.span
                       className="font-medium text-gold"
-                      key={goldBalance}
+                      key={isLoading ? "loading-gold" : `gold-${goldBalance}`}
                       initial={{ opacity: 0.8, scale: 0.95 }}
                       animate={{ opacity: 1, scale: 1 }}
                       transition={{ duration: 0.3 }}
                     >
-                      {isLoading ? "..." : goldBalance.toFixed(2)}
+                      {isLoading ? "..." : formatBalance(goldBalance, 2)}
                     </motion.span>
                   </div>
                 </div>

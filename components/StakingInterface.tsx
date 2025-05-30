@@ -1,364 +1,360 @@
 "use client"
 
 import { useState, useEffect } from "react"
-import { useWallet } from "@solana/wallet-adapter-react"
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { Card, CardContent } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { useStaking } from "@/hooks/useStaking"
 import { useWalletBalance } from "@/hooks/useWalletBalance"
+import { useWallet } from "@solana/wallet-adapter-react"
+import { GOLD_TOKEN } from "@/constants/tokens"
+import { useTheme } from "@/components/providers/WalletContextProvider"
 import { useToast } from "@/components/ui/use-toast"
-import { motion, AnimatePresence } from "framer-motion"
-import { ArrowUpIcon, ArrowDownIcon, CoinsIcon } from "lucide-react"
 
-// Constants adjusted for 1M total supply
-const STAKING_PROGRAM_ID = "99SzC9waY86s9JRPYJ9Fw9K6YVziw9L9z8L95WQWv7wn"
-const STAKING_POOL_MINT = "Gh9Ly5t8LzVtdWq2rM3W5qTW52wX68yQ6rXdi9999999"
-const STAKING_POOL_ATA = "9999999999999999999999999999999999999999999999999999999999999999"
-const TREASURY_ATA = "9999999999999999999999999999999999999999999999999999999999999999"
-
-export function StakingInterface() {
+export default function StakingInterface() {
   const { connected, publicKey } = useWallet()
+  const { theme } = useTheme()
   const { toast } = useToast()
-  const { goldBalance } = useWalletBalance()
+  const isDarkTheme = theme === "dark"
+
   const {
     stakedAmount,
     pendingRewards,
     apy,
+    timeRemaining,
     isStaking,
     isUnstaking,
     isClaimingRewards,
+    isLoading,
     stakeTokens,
     unstakeTokens,
     claimRewards,
-    refreshStakingData,
     formattedTimeRemaining,
-    isLoading,
-    timeRemaining,
+    refreshStakingData,
   } = useStaking()
+
+  const { balances, refreshBalances } = useWalletBalance()
 
   const [stakeAmount, setStakeAmount] = useState("")
   const [unstakeAmount, setUnstakeAmount] = useState("")
   const [activeTab, setActiveTab] = useState("stake")
+  const [isInitialized, setIsInitialized] = useState(false)
 
-  const maxStakeAmount = goldBalance || 0
-  const maxUnstakeAmount = stakedAmount
+  // Initialize component
+  useEffect(() => {
+    if (connected && publicKey) {
+      // Initialize local storage for testing if needed
+      if (!localStorage.getItem(`${publicKey.toString()}_goldBalance`)) {
+        localStorage.setItem(`${publicKey.toString()}_goldBalance`, "1000")
+      }
 
-  const handleStakeMaxClick = () => {
-    setStakeAmount(maxStakeAmount.toString())
-  }
+      refreshBalances()
+      refreshStakingData()
+      setIsInitialized(true)
+    }
+  }, [connected, publicKey, refreshBalances, refreshStakingData])
 
-  const handleUnstakeMaxClick = () => {
-    setUnstakeAmount(maxUnstakeAmount.toString())
-  }
+  // Reset input fields when tab changes
+  useEffect(() => {
+    setStakeAmount("")
+    setUnstakeAmount("")
+  }, [activeTab])
 
+  // Handle stake
   const handleStake = async () => {
-    if (!publicKey || !stakeAmount || Number.parseFloat(stakeAmount) <= 0) {
+    if (!stakeAmount || Number(stakeAmount) <= 0) {
       toast({
+        title: "Invalid amount",
+        description: "Please enter a valid amount to stake",
         variant: "destructive",
-        title: "Error",
-        description: "Please enter a valid amount to stake.",
       })
       return
     }
 
-    const amount = Number.parseFloat(stakeAmount)
     try {
-      await stakeTokens(amount)
-      setStakeAmount("")
+      const amount = Number(stakeAmount)
+      const success = await stakeTokens(amount)
+
+      if (success) {
+        setStakeAmount("")
+        toast({
+          title: "Success",
+          description: `Successfully staked ${amount} GOLD`,
+        })
+      }
+    } catch (error) {
+      console.error("Staking error:", error)
       toast({
-        title: "Stake Successful",
-        description: `Successfully staked ${amount} GOLD.`,
-      })
-    } catch (error: any) {
-      console.error("Stake failed:", error)
-      toast({
+        title: "Staking failed",
+        description: error instanceof Error ? error.message : "Failed to stake tokens",
         variant: "destructive",
-        title: "Stake Failed",
-        description: error.message || "An error occurred while staking.",
       })
     }
   }
 
+  // Handle unstake
   const handleUnstake = async () => {
-    if (!publicKey || !unstakeAmount || Number.parseFloat(unstakeAmount) <= 0) {
+    if (!unstakeAmount || Number(unstakeAmount) <= 0) {
       toast({
+        title: "Invalid amount",
+        description: "Please enter a valid amount to unstake",
         variant: "destructive",
-        title: "Error",
-        description: "Please enter a valid amount to unstake.",
       })
       return
     }
 
-    const amount = Number.parseFloat(unstakeAmount)
     try {
-      await unstakeTokens(amount)
-      setUnstakeAmount("")
+      const amount = Number(unstakeAmount)
+      const success = await unstakeTokens(amount)
+
+      if (success) {
+        setUnstakeAmount("")
+        toast({
+          title: "Success",
+          description: `Successfully unstaked ${amount} GOLD`,
+        })
+      }
+    } catch (error) {
+      console.error("Unstaking error:", error)
       toast({
-        title: "Unstake Successful",
-        description: `Successfully unstaked ${amount} GOLD.`,
-      })
-    } catch (error: any) {
-      console.error("Unstake failed:", error)
-      toast({
+        title: "Unstaking failed",
+        description: error instanceof Error ? error.message : "Failed to unstake tokens",
         variant: "destructive",
-        title: "Unstake Failed",
-        description: error.message || "An error occurred while unstaking.",
       })
     }
   }
 
+  // Handle claim rewards
   const handleClaimRewards = async () => {
     try {
-      await claimRewards()
+      const success = await claimRewards()
+
+      if (success) {
+        toast({
+          title: "Success",
+          description: `Successfully claimed your rewards`,
+        })
+      }
+    } catch (error) {
+      console.error("Claim rewards error:", error)
       toast({
-        title: "Claim Successful",
-        description: `Successfully claimed ${pendingRewards} GOLD rewards.`,
-      })
-    } catch (error: any) {
-      console.error("Claim failed:", error)
-      toast({
+        title: "Claim failed",
+        description: error instanceof Error ? error.message : "Failed to claim rewards",
         variant: "destructive",
-        title: "Claim Failed",
-        description: error.message || "An error occurred while claiming rewards.",
       })
     }
   }
 
-  useEffect(() => {
-    refreshStakingData()
-  }, [refreshStakingData])
+  // Handle max stake
+  const handleMaxStake = () => {
+    const goldBalance = balances[GOLD_TOKEN.symbol] || 0
+    setStakeAmount(goldBalance.toString())
+  }
 
-  useEffect(() => {
-    const intervalId = setInterval(() => {
-      refreshStakingData()
-    }, 10000)
+  // Handle max unstake
+  const handleMaxUnstake = () => {
+    setUnstakeAmount(stakedAmount.toString())
+  }
 
-    return () => clearInterval(intervalId)
-  }, [refreshStakingData])
+  // Show loading state
+  if (!isInitialized || isLoading) {
+    return (
+      <Card
+        className={`w-full max-w-md mx-auto ${isDarkTheme ? "bg-gray-900 border-gray-800" : "bg-white border-gray-200"}`}
+      >
+        <CardContent className="p-6 flex justify-center items-center h-64">
+          <div className="flex flex-col items-center">
+            <div className="w-10 h-10 border-4 border-t-transparent border-amber-500 rounded-full animate-spin mb-4"></div>
+            <p className={`text-sm ${isDarkTheme ? "text-gray-400" : "text-gray-500"}`}>Loading staking data...</p>
+          </div>
+        </CardContent>
+      </Card>
+    )
+  }
+
+  // Show connect wallet message if not connected
+  if (!connected) {
+    return (
+      <Card
+        className={`w-full max-w-md mx-auto ${isDarkTheme ? "bg-gray-900 border-gray-800" : "bg-white border-gray-200"}`}
+      >
+        <CardContent className="p-6 flex justify-center items-center h-64">
+          <div className="flex flex-col items-center text-center">
+            <p className={`text-lg font-medium mb-4 ${isDarkTheme ? "text-gray-300" : "text-gray-700"}`}>
+              Connect your wallet to start staking
+            </p>
+            <p className={`text-sm ${isDarkTheme ? "text-gray-400" : "text-gray-500"} mb-6`}>
+              You need to connect your wallet to stake GOLD tokens and earn rewards.
+            </p>
+          </div>
+        </CardContent>
+      </Card>
+    )
+  }
 
   return (
-    <Card className="w-full max-w-md mx-auto bg-black border border-gold-500/20">
-      <CardHeader className="pb-4">
-        <CardTitle className="text-xl text-gold-500">GOLD Staking</CardTitle>
-      </CardHeader>
-      <CardContent className="space-y-6">
-        <div className="grid grid-cols-2 gap-4">
-          <div className="bg-gray-900 rounded-lg p-4">
-            <div className="text-sm text-gray-400 mb-1">Staked GOLD</div>
-            <div className="text-xl font-bold text-gold-500">
-              <AnimatePresence mode="wait">
-                <motion.div
-                  key={stakedAmount}
-                  initial={{ opacity: 0, y: 10 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  exit={{ opacity: 0, y: -10 }}
-                  transition={{ duration: 0.2 }}
-                >
-                  {isLoading ? <div className="h-6 w-20 bg-gray-800 animate-pulse rounded" /> : stakedAmount.toFixed(2)}
-                </motion.div>
-              </AnimatePresence>
-            </div>
+    <Card
+      className={`w-full max-w-md mx-auto ${isDarkTheme ? "bg-gray-900 border-gray-800" : "bg-white border-gray-200"}`}
+    >
+      <CardContent className="p-6">
+        <div className="grid grid-cols-2 gap-4 mb-6">
+          <div className={`${isDarkTheme ? "bg-gray-800" : "bg-gray-100"} p-4 rounded-lg`}>
+            <p className={`text-sm ${isDarkTheme ? "text-gray-400" : "text-gray-500"}`}>Staked GOLD</p>
+            <p className="text-xl font-bold">{stakedAmount.toFixed(2)}</p>
           </div>
-          <div className="bg-gray-900 rounded-lg p-4">
-            <div className="text-sm text-gray-400 mb-1">APY</div>
-            <div className="text-xl font-bold text-green-500">
-              <AnimatePresence mode="wait">
-                <motion.div
-                  key={apy}
-                  initial={{ opacity: 0, y: 10 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  exit={{ opacity: 0, y: -10 }}
-                  transition={{ duration: 0.2 }}
-                >
-                  {isLoading ? <div className="h-6 w-16 bg-gray-800 animate-pulse rounded" /> : `${apy.toFixed(2)}%`}
-                </motion.div>
-              </AnimatePresence>
-            </div>
+          <div className={`${isDarkTheme ? "bg-gray-800" : "bg-gray-100"} p-4 rounded-lg`}>
+            <p className={`text-sm ${isDarkTheme ? "text-gray-400" : "text-gray-500"}`}>Pending Rewards</p>
+            <p className="text-xl font-bold text-amber-500">{pendingRewards.toFixed(4)}</p>
           </div>
-          <div className="bg-gray-900 rounded-lg p-4">
-            <div className="text-sm text-gray-400 mb-1">Pending Rewards</div>
-            <div className="text-xl font-bold text-gold-500">
-              <AnimatePresence mode="wait">
-                <motion.div
-                  key={pendingRewards}
-                  initial={{ opacity: 0, y: 10 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  exit={{ opacity: 0, y: -10 }}
-                  transition={{ duration: 0.2 }}
-                >
-                  {isLoading ? (
-                    <div className="h-6 w-20 bg-gray-800 animate-pulse rounded" />
-                  ) : (
-                    pendingRewards.toFixed(4)
-                  )}
-                </motion.div>
-              </AnimatePresence>
-            </div>
+          <div className={`${isDarkTheme ? "bg-gray-800" : "bg-gray-100"} p-4 rounded-lg`}>
+            <p className={`text-sm ${isDarkTheme ? "text-gray-400" : "text-gray-500"}`}>APY</p>
+            <p className="text-xl font-bold text-green-500">{apy}%</p>
           </div>
-          <div className="bg-gray-900 rounded-lg p-4">
-            <div className="text-sm text-gray-400 mb-1">Time Remaining</div>
-            <div className="text-xl font-bold text-gray-300">
-              <AnimatePresence mode="wait">
-                <motion.div
-                  key={timeRemaining}
-                  initial={{ opacity: 0, y: 10 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  exit={{ opacity: 0, y: -10 }}
-                  transition={{ duration: 0.2 }}
-                >
-                  {isLoading ? (
-                    <div className="h-6 w-24 bg-gray-800 animate-pulse rounded" />
-                  ) : (
-                    formattedTimeRemaining()
-                  )}
-                </motion.div>
-              </AnimatePresence>
-            </div>
+          <div className={`${isDarkTheme ? "bg-gray-800" : "bg-gray-100"} p-4 rounded-lg`}>
+            <p className={`text-sm ${isDarkTheme ? "text-gray-400" : "text-gray-500"}`}>Lock Time</p>
+            <p className="text-xl font-bold">{formattedTimeRemaining()}</p>
           </div>
         </div>
 
-        <Button
-          className="w-full bg-gradient-to-r from-gold-600 to-gold-400 hover:from-gold-500 hover:to-gold-300 text-black font-semibold"
-          disabled={isClaimingRewards || pendingRewards <= 0 || !connected}
-          onClick={handleClaimRewards}
-        >
-          {isClaimingRewards ? (
-            <div className="flex items-center">
-              <span className="mr-2">Claiming</span>
-              <div className="w-4 h-4 border-2 border-t-transparent border-black rounded-full animate-spin" />
-            </div>
-          ) : (
-            <div className="flex items-center">
-              <CoinsIcon className="mr-2 h-4 w-4" />
-              <span>Claim {pendingRewards.toFixed(4)} GOLD Rewards</span>
-            </div>
-          )}
-        </Button>
+        {pendingRewards > 0 && (
+          <Button
+            onClick={handleClaimRewards}
+            disabled={isClaimingRewards || pendingRewards <= 0}
+            className="w-full mb-6 bg-gradient-to-r from-amber-500 to-yellow-500 hover:from-amber-600 hover:to-yellow-600 text-black font-semibold"
+          >
+            {isClaimingRewards ? (
+              <div className="flex items-center">
+                <span className="mr-2">Claiming</span>
+                <div className="w-4 h-4 border-2 border-t-transparent border-black rounded-full animate-spin" />
+              </div>
+            ) : (
+              `Claim ${pendingRewards.toFixed(4)} GOLD`
+            )}
+          </Button>
+        )}
 
         <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-          <TabsList className="grid grid-cols-2 w-full bg-gray-900">
-            <TabsTrigger value="stake" className="data-[state=active]:bg-gold-500 data-[state=active]:text-black">
-              <ArrowUpIcon className="mr-2 h-4 w-4" />
-              Stake
-            </TabsTrigger>
-            <TabsTrigger value="unstake" className="data-[state=active]:bg-gold-500 data-[state=active]:text-black">
-              <ArrowDownIcon className="mr-2 h-4 w-4" />
-              Unstake
-            </TabsTrigger>
+          <TabsList className="grid grid-cols-2 mb-4">
+            <TabsTrigger value="stake">Stake</TabsTrigger>
+            <TabsTrigger value="unstake">Unstake</TabsTrigger>
           </TabsList>
-
-          <TabsContent value="stake" className="mt-4 space-y-4">
-            <div className="space-y-2">
+          <TabsContent value="stake">
+            <div className="space-y-4">
               <div className="flex justify-between items-center">
-                <span className="text-sm text-gray-400">Amount to Stake</span>
-                <span className="text-xs text-gray-500">Balance: {maxStakeAmount.toFixed(4)} GOLD</span>
+                <span className={`text-sm ${isDarkTheme ? "text-gray-400" : "text-gray-500"}`}>Available GOLD</span>
+                <span className={`text-sm ${isDarkTheme ? "text-gray-300" : "text-gray-700"}`}>
+                  {balances[GOLD_TOKEN.symbol]?.toFixed(4) || "0"}
+                </span>
               </div>
               <div className="relative">
                 <Input
-                  type="number"
+                  type="text"
                   placeholder="0.00"
                   value={stakeAmount}
-                  onChange={(e) => setStakeAmount(e.target.value)}
-                  className="bg-gray-900 border-gray-700 pr-16"
+                  onChange={(e) => {
+                    // Only allow numbers and decimals
+                    if (e.target.value === "" || /^\d*\.?\d*$/.test(e.target.value)) {
+                      setStakeAmount(e.target.value)
+                    }
+                  }}
+                  className={`${isDarkTheme ? "bg-gray-800 border-gray-700" : "bg-gray-100 border-gray-300"} pr-16`}
                 />
                 <Button
                   variant="ghost"
                   size="sm"
-                  className="absolute right-2 top-1/2 transform -translate-y-1/2 text-xs text-gold-500 h-6 px-2"
-                  onClick={handleStakeMaxClick}
+                  className="absolute right-2 top-1/2 transform -translate-y-1/2 text-xs text-amber-500 h-6 px-2"
+                  onClick={handleMaxStake}
                 >
                   MAX
                 </Button>
               </div>
+              <Button
+                onClick={handleStake}
+                disabled={
+                  isStaking ||
+                  !connected ||
+                  !stakeAmount ||
+                  Number(stakeAmount) <= 0 ||
+                  Number(stakeAmount) > (balances[GOLD_TOKEN.symbol] || 0)
+                }
+                className="w-full bg-gradient-to-r from-amber-500 to-yellow-500 hover:from-amber-600 hover:to-yellow-600 text-black font-semibold"
+              >
+                {isStaking ? (
+                  <div className="flex items-center">
+                    <span className="mr-2">Staking</span>
+                    <div className="w-4 h-4 border-2 border-t-transparent border-black rounded-full animate-spin" />
+                  </div>
+                ) : (
+                  "Stake GOLD"
+                )}
+              </Button>
+              <p className={`text-xs ${isDarkTheme ? "text-gray-500" : "text-gray-600"}`}>
+                Note: Staked GOLD is locked for 7 days. You will earn {apy}% APY during this period.
+              </p>
             </div>
-
-            <Button
-              className="w-full bg-gradient-to-r from-gold-600 to-gold-400 hover:from-gold-500 hover:to-gold-300 text-black font-semibold"
-              disabled={
-                isStaking ||
-                !stakeAmount ||
-                Number.parseFloat(stakeAmount) <= 0 ||
-                Number.parseFloat(stakeAmount) > maxStakeAmount ||
-                !connected
-              }
-              onClick={handleStake}
-            >
-              {isStaking ? (
-                <div className="flex items-center">
-                  <span className="mr-2">Staking</span>
-                  <div className="w-4 h-4 border-2 border-t-transparent border-black rounded-full animate-spin" />
-                </div>
-              ) : !connected ? (
-                "Connect Wallet"
-              ) : !stakeAmount || Number.parseFloat(stakeAmount) <= 0 ? (
-                "Enter an amount"
-              ) : Number.parseFloat(stakeAmount) > maxStakeAmount ? (
-                "Insufficient balance"
-              ) : (
-                `Stake ${Number.parseFloat(stakeAmount).toFixed(2)} GOLD`
-              )}
-            </Button>
           </TabsContent>
-
-          <TabsContent value="unstake" className="mt-4 space-y-4">
-            <div className="space-y-2">
+          <TabsContent value="unstake">
+            <div className="space-y-4">
               <div className="flex justify-between items-center">
-                <span className="text-sm text-gray-400">Amount to Unstake</span>
-                <span className="text-xs text-gray-500">Staked: {maxUnstakeAmount.toFixed(4)} GOLD</span>
+                <span className={`text-sm ${isDarkTheme ? "text-gray-400" : "text-gray-500"}`}>Staked GOLD</span>
+                <span className={`text-sm ${isDarkTheme ? "text-gray-300" : "text-gray-700"}`}>
+                  {stakedAmount.toFixed(4)}
+                </span>
               </div>
               <div className="relative">
                 <Input
-                  type="number"
+                  type="text"
                   placeholder="0.00"
                   value={unstakeAmount}
-                  onChange={(e) => setUnstakeAmount(e.target.value)}
-                  className="bg-gray-900 border-gray-700 pr-16"
+                  onChange={(e) => {
+                    // Only allow numbers and decimals
+                    if (e.target.value === "" || /^\d*\.?\d*$/.test(e.target.value)) {
+                      setUnstakeAmount(e.target.value)
+                    }
+                  }}
+                  className={`${isDarkTheme ? "bg-gray-800 border-gray-700" : "bg-gray-100 border-gray-300"} pr-16`}
                 />
                 <Button
                   variant="ghost"
                   size="sm"
-                  className="absolute right-2 top-1/2 transform -translate-y-1/2 text-xs text-gold-500 h-6 px-2"
-                  onClick={handleUnstakeMaxClick}
+                  className="absolute right-2 top-1/2 transform -translate-y-1/2 text-xs text-amber-500 h-6 px-2"
+                  onClick={handleMaxUnstake}
                 >
                   MAX
                 </Button>
               </div>
+              <Button
+                onClick={handleUnstake}
+                disabled={
+                  isUnstaking ||
+                  !connected ||
+                  !unstakeAmount ||
+                  Number(unstakeAmount) <= 0 ||
+                  Number(unstakeAmount) > stakedAmount ||
+                  timeRemaining > 0
+                }
+                className="w-full bg-gradient-to-r from-amber-500 to-yellow-500 hover:from-amber-600 hover:to-yellow-600 text-black font-semibold"
+              >
+                {isUnstaking ? (
+                  <div className="flex items-center">
+                    <span className="mr-2">Unstaking</span>
+                    <div className="w-4 h-4 border-2 border-t-transparent border-black rounded-full animate-spin" />
+                  </div>
+                ) : timeRemaining > 0 ? (
+                  `Locked for ${formattedTimeRemaining()}`
+                ) : (
+                  "Unstake GOLD"
+                )}
+              </Button>
+              <p className={`text-xs ${isDarkTheme ? "text-gray-500" : "text-gray-600"}`}>
+                Note: You can only unstake after the 7-day lock period. Make sure to claim your rewards before
+                unstaking.
+              </p>
             </div>
-
-            <Button
-              className="w-full bg-gradient-to-r from-gold-600 to-gold-400 hover:from-gold-500 hover:to-gold-300 text-black font-semibold"
-              disabled={
-                isUnstaking ||
-                !unstakeAmount ||
-                Number.parseFloat(unstakeAmount) <= 0 ||
-                Number.parseFloat(unstakeAmount) > maxUnstakeAmount ||
-                !connected
-              }
-              onClick={handleUnstake}
-            >
-              {isUnstaking ? (
-                <div className="flex items-center">
-                  <span className="mr-2">Unstaking</span>
-                  <div className="w-4 h-4 border-2 border-t-transparent border-black rounded-full animate-spin" />
-                </div>
-              ) : !connected ? (
-                "Connect Wallet"
-              ) : !unstakeAmount || Number.parseFloat(unstakeAmount) <= 0 ? (
-                "Enter an amount"
-              ) : Number.parseFloat(unstakeAmount) > maxUnstakeAmount ? (
-                "Insufficient staked balance"
-              ) : (
-                `Unstake ${Number.parseFloat(unstakeAmount).toFixed(2)} GOLD`
-              )}
-            </Button>
           </TabsContent>
         </Tabs>
       </CardContent>
     </Card>
   )
 }
-
-// Add default export
-export default StakingInterface

@@ -3,6 +3,7 @@ import type { Metadata } from "next"
 import { Inter, Sora } from "next/font/google"
 import "./globals.css"
 import ClientProviders from "@/components/ClientProviders"
+import ClientInitializer from "@/components/ClientInitializer"
 
 const sora = Sora({
   subsets: ["latin"],
@@ -30,7 +31,10 @@ export default function RootLayout({
   return (
     <html lang="en" suppressHydrationWarning>
       <body className={`${sora.variable} ${inter.variable} font-sans bg-black text-white`}>
-        <ClientProviders>{children}</ClientProviders>
+        <ClientProviders>
+          <ClientInitializer />
+          {children}
+        </ClientProviders>
       </body>
     </html>
   )

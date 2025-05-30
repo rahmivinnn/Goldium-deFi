@@ -1,59 +1,23 @@
-import { TestingDashboard } from "@/components/TestingDashboard"
-import PageLayout from "@/components/PageLayout"
-import type { Metadata } from "next"
-
-export const metadata: Metadata = {
-  title: "DeFi Testing Dashboard | Goldium.io",
-  description: "Test and verify DeFi features across networks",
-}
+import { WalletContextProvider } from "@/components/providers/WalletContextProvider"
+import Header from "@/components/Header"
+import DeFiTester from "@/components/DeFiTester"
 
 export default function TestingPage() {
   return (
-    <PageLayout>
-      <div className="container mx-auto px-4 py-12">
-        <h1 className="text-4xl font-bold mb-8 text-center text-transparent bg-clip-text bg-gradient-to-r from-amber-500 to-yellow-300">
-          DeFi Testing Dashboard
-        </h1>
-
-        <div className="max-w-4xl mx-auto">
-          <TestingDashboard />
-        </div>
-
-        <div className="mt-12 max-w-2xl mx-auto bg-black/30 backdrop-blur-sm rounded-xl p-6 border border-amber-500/20">
-          <h2 className="text-2xl font-bold mb-4 text-amber-400">Testing Instructions</h2>
-
-          <div className="space-y-4 text-gray-300">
-            <p>
-              This dashboard allows you to test all DeFi features across different networks. Follow these steps to
-              thoroughly test the application:
-            </p>
-
-            <ol className="list-decimal pl-5 space-y-2">
-              <li>
-                <strong>Select Network:</strong> Use the network selector to switch between Devnet, Testnet, and Mainnet
-                Beta.
-              </li>
-              <li>
-                <strong>Connect Wallet:</strong> Connect your Phantom wallet to the selected network.
-              </li>
-              <li>
-                <strong>Run Tests:</strong> Click "Run All Tests" to verify basic connectivity and token balance.
-              </li>
-              <li>
-                <strong>Test Individual Features:</strong> Use the tabs to test specific DeFi features like staking,
-                swapping, and liquidity pools.
-              </li>
-              <li>
-                <strong>Verify Results:</strong> Check the test results to ensure all features are working correctly.
-              </li>
-            </ol>
-
-            <p className="text-amber-300 font-medium mt-4">
-              Note: When testing on Devnet or Testnet, you can use the faucet to claim test GOLD tokens.
-            </p>
+    <WalletContextProvider>
+      <main className="min-h-screen bg-black text-white flex flex-col">
+        <Header />
+        <div className="max-w-7xl mx-auto w-full px-4 py-8">
+          <div className="mb-8">
+            <h1 className="text-3xl font-bold bg-gradient-to-r from-amber-200 to-yellow-500 bg-clip-text text-transparent mb-2">
+              DeFi Testing Dashboard
+            </h1>
+            <p className="text-gray-400">Test and verify all DeFi features in the Goldium platform</p>
           </div>
+
+          <DeFiTester />
         </div>
-      </div>
-    </PageLayout>
+      </main>
+    </WalletContextProvider>
   )
 }

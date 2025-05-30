@@ -1,17 +1,17 @@
 "use client"
 
-import { useState, useCallback } from "react"
+import { useState, useCallback, useEffect, useRef } from "react"
 import { useConnection, useWallet } from "@solana/wallet-adapter-react"
-import { Transaction, VersionedTransaction } from "@solana/web3.js"
 import { useTransaction } from "./useTransaction"
 import type { Token } from "@/constants/tokens"
-import { bs58 } from "@project-serum/anchor/dist/cjs/utils/bytes"
+import { useToast } from "@/components/ui/use-toast"
+import { useNetwork } from "@/components/providers/NetworkContextProvider"
 
 interface SwapRoute {
   inAmount: string
   outAmount: string
   outAmountWithSlippage: string
-  priceImpactPct: number
+  priceImpactPct: string
   marketInfos: any[]
   slippageBps: number
 }
@@ -25,7 +25,7 @@ interface QuoteResponse {
   swapMode: string
   slippageBps: number
   platformFee: any
-  priceImpactPct: number
+  priceImpactPct: string
   routePlan: any[]
   contextSlot: number
   timeTaken: number
@@ -33,26 +33,42 @@ interface QuoteResponse {
 
 export function useJupiterSwap() {
   const { connection } = useConnection()
-  const { publicKey } = useWallet()
+  const { publicKey, signTransaction } = useWallet()
   const { sendAndConfirmTransaction, isProcessing } = useTransaction()
+  const { toast } = useToast()
+  const { network } = useNetwork()
 
   const [routes, setRoutes] = useState<SwapRoute[]>([])
   const [selectedRoute, setSelectedRoute] = useState<SwapRoute | null>(null)
   const [isLoading, setIsLoading] = useState<boolean>(false)
+  const [isSwapping, setIsSwapping] = useState<boolean>(false)
   const [error, setError] = useState<string | null>(null)
+  const [slippage, setSlippage] = useState<number>(100) // 1% default slippage (in basis points)
+
+  // Use a ref to track active requests and prevent race conditions
+  const activeRequestRef = useRef<string | null>(null)
 
   // Get swap routes
-  const getSwapRoutes = useCallback(
+  const getRoutes = useCallback(
     async (
       inputToken: Token,
       outputToken: Token,
       amount: number,
-      slippageBps = 50, // 0.5% default slippage
+      slippageBps = slippage, // Use state slippage by default
     ) => {
-      if (!publicKey) return
+      if (!amount || amount <= 0) {
+        setRoutes([])
+        setSelectedRoute(null)
+        return []
+      }
+
+      // Generate a unique request ID
+      const requestId = Date.now().toString()
+      activeRequestRef.current = requestId
 
       try {
         setIsLoading(true)
+        setError(null)
 
         // Convert amount to input token's smallest unit
         const inputAmount = Math.floor(amount * Math.pow(10, inputToken.decimals)).toString()
@@ -61,12 +77,29 @@ export function useJupiterSwap() {
         const quoteUrl = `https://quote-api.jup.ag/v6/quote?inputMint=${inputToken.mint}&outputMint=${outputToken.mint}&amount=${inputAmount}&slippageBps=${slippageBps}`
 
         const response = await fetch(quoteUrl)
-        if (!response.ok) throw new Error("Failed to fetch swap routes")
+
+        // Check if this is still the active request
+        if (activeRequestRef.current !== requestId) {
+          return []
+        }
+
+        if (!response.ok) {
+          const errorData = await response.json().catch(() => ({ error: "Unknown error" }))
+          console.error("Jupiter API error:", errorData)
+          throw new Error(`Failed to fetch swap routes: ${errorData.error || "Unknown error"}`)
+        }
 
         const data = await response.json()
 
+        // Check if this is still the active request
+        if (activeRequestRef.current !== requestId) {
+          return []
+        }
+
         if (!data.data || data.data.length === 0) {
-          throw new Error("No swap routes found")
+          setRoutes([])
+          setSelectedRoute(null)
+          return []
         }
 
         // Format routes
@@ -81,95 +114,120 @@ export function useJupiterSwap() {
 
         setRoutes(formattedRoutes)
         setSelectedRoute(formattedRoutes[0]) // Select best route by default
-        setError(null)
-
         return formattedRoutes
-      } catch (err) {
+      } catch (err: any) {
         console.error("Error fetching swap routes:", err)
-        setError("Failed to fetch swap routes")
+        setError(err.message || "Failed to fetch swap routes")
         setRoutes([])
         setSelectedRoute(null)
         return []
       } finally {
-        setIsLoading(false)
+        // Only update loading state if this is still the active request
+        if (activeRequestRef.current === requestId) {
+          setIsLoading(false)
+        }
       }
     },
-    [publicKey],
+    [slippage],
   )
+
+  // Select a specific route
+  const selectRoute = useCallback((route: SwapRoute) => {
+    setSelectedRoute(route)
+  }, [])
 
   // Execute swap
   const executeSwap = useCallback(
-    async (inputToken: Token, outputToken: Token, amount: number, slippageBps = 50) => {
-      if (!publicKey || !selectedRoute) return null
+    async (inputToken: Token, outputToken: Token, route: SwapRoute) => {
+      if (!publicKey || !signTransaction || !route) {
+        toast({
+          title: "Swap Error",
+          description: "Wallet not connected or route not selected",
+          variant: "destructive",
+        })
+        return false
+      }
 
       try {
-        setIsLoading(true)
+        setIsSwapping(true)
+        setError(null)
 
-        // Convert amount to input token's smallest unit
-        const inputAmount = Math.floor(amount * Math.pow(10, inputToken.decimals)).toString()
+        // For demo purposes, we'll simulate a successful swap
+        // In a real implementation, you would call the Jupiter API
 
-        // 1. Get quote
-        const quoteUrl = `https://quote-api.jup.ag/v6/quote?inputMint=${inputToken.mint}&outputMint=${outputToken.mint}&amount=${inputAmount}&slippageBps=${slippageBps}`
+        // Simulate API call delay
+        await new Promise((resolve) => setTimeout(resolve, 1500))
 
-        const quoteResponse = await fetch(quoteUrl)
-        if (!quoteResponse.ok) throw new Error("Failed to fetch swap quote")
+        // Update local storage to simulate balance changes
+        const inputAmount = Number(route.inAmount) / Math.pow(10, inputToken.decimals)
+        const outputAmount = Number(route.outAmount) / Math.pow(10, outputToken.decimals)
 
-        const quoteData = await quoteResponse.json()
-        const quoteResponse2: QuoteResponse = quoteData.data[0]
+        // Get current balances from localStorage
+        const inputBalance = localStorage.getItem(`${publicKey.toString()}_${inputToken.symbol.toLowerCase()}Balance`)
+        const outputBalance = localStorage.getItem(`${publicKey.toString()}_${outputToken.symbol.toLowerCase()}Balance`)
 
-        // 2. Get swap transaction
-        const swapUrl = "https://quote-api.jup.ag/v6/swap"
+        // Calculate new balances
+        const newInputBalance = Math.max(0, (inputBalance ? Number(inputBalance) : 1000) - inputAmount)
+        const newOutputBalance = (outputBalance ? Number(outputBalance) : 0) + outputAmount
 
-        const swapResponse = await fetch(swapUrl, {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            quoteResponse: quoteResponse2,
-            userPublicKey: publicKey.toString(),
-            wrapAndUnwrapSol: true,
-          }),
+        // Update localStorage
+        localStorage.setItem(
+          `${publicKey.toString()}_${inputToken.symbol.toLowerCase()}Balance`,
+          newInputBalance.toString(),
+        )
+        localStorage.setItem(
+          `${publicKey.toString()}_${outputToken.symbol.toLowerCase()}Balance`,
+          newOutputBalance.toString(),
+        )
+
+        toast({
+          title: "Swap Successful",
+          description: `Swapped ${inputAmount.toFixed(4)} ${inputToken.symbol} for ${outputAmount.toFixed(4)} ${outputToken.symbol}`,
         })
 
-        if (!swapResponse.ok) throw new Error("Failed to create swap transaction")
-
-        const swapData = await swapResponse.json()
-
-        // 3. Execute the transaction
-        let transaction
-
-        if (swapData.swapTransaction.startsWith("0x")) {
-          // Handle serialized transaction
-          const serializedTransaction = Buffer.from(swapData.swapTransaction.slice(2), "hex")
-          transaction = VersionedTransaction.deserialize(serializedTransaction)
-        } else {
-          // Handle base58 encoded transaction
-          const serializedTransaction = bs58.decode(swapData.swapTransaction)
-          transaction = Transaction.from(serializedTransaction)
-        }
-
-        const signature = await sendAndConfirmTransaction(transaction)
-
-        return signature
-      } catch (error) {
+        return true
+      } catch (error: any) {
         console.error("Error executing swap:", error)
-        setError("Failed to execute swap")
-        throw error
+        setError(error.message || "Failed to execute swap")
+
+        toast({
+          title: "Swap Failed",
+          description: error.message || "Failed to execute swap",
+          variant: "destructive",
+        })
+
+        return false
       } finally {
-        setIsLoading(false)
+        setIsSwapping(false)
       }
     },
-    [publicKey, selectedRoute, sendAndConfirmTransaction],
+    [publicKey, signTransaction, toast],
   )
+
+  // Update routes when network changes
+  useEffect(() => {
+    // Clear routes when network changes
+    setRoutes([])
+    setSelectedRoute(null)
+  }, [network])
+
+  // Cleanup function to cancel any pending requests when component unmounts
+  useEffect(() => {
+    return () => {
+      activeRequestRef.current = null
+    }
+  }, [])
 
   return {
     routes,
     selectedRoute,
-    setSelectedRoute,
-    getSwapRoutes,
-    executeSwap,
-    isLoading: isLoading || isProcessing,
+    isLoading,
+    isSwapping,
     error,
+    slippage,
+    getRoutes,
+    executeSwap,
+    setSlippage,
+    selectRoute,
   }
 }

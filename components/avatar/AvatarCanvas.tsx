@@ -19,10 +19,17 @@ export default function AvatarCanvas({ options }: AvatarCanvasProps) {
   const [showParticles, setShowParticles] = useState(false)
   const particlesRef = useRef<HTMLCanvasElement>(null)
   const animationRef = useRef<number | null>(null)
+  const [isMounted, setIsMounted] = useState(false)
+
+  // Effect for component mounting
+  useEffect(() => {
+    setIsMounted(true)
+    return () => setIsMounted(false)
+  }, [])
 
   // Effect for drawing the avatar
   useEffect(() => {
-    if (!canvasRef.current) return
+    if (!canvasRef.current || !isMounted) return
 
     const canvas = canvasRef.current
     const ctx = canvas.getContext("2d")
@@ -58,11 +65,11 @@ export default function AvatarCanvas({ options }: AvatarCanvasProps) {
 
     // Restore the saved state
     ctx.restore()
-  }, [options, rotationAngle])
+  }, [options, rotationAngle, isMounted])
 
   // Effect for particle animation
   useEffect(() => {
-    if (!particlesRef.current || !showParticles) return
+    if (!particlesRef.current || !showParticles || !isMounted) return
 
     const canvas = particlesRef.current
     const ctx = canvas.getContext("2d")
@@ -86,6 +93,8 @@ export default function AvatarCanvas({ options }: AvatarCanvasProps) {
 
     // Animation function
     function animate() {
+      if (!ctx || !canvas) return
+
       ctx.clearRect(0, 0, canvas.width, canvas.height)
 
       // Update and draw particles
@@ -118,7 +127,7 @@ export default function AvatarCanvas({ options }: AvatarCanvasProps) {
         cancelAnimationFrame(animationRef.current)
       }
     }
-  }, [showParticles, options.skin])
+  }, [showParticles, options.skin, isMounted])
 
   // Function to get particle color based on skin
   const getParticleColor = (skin: string) => {
@@ -564,17 +573,21 @@ export default function AvatarCanvas({ options }: AvatarCanvasProps) {
 
     // Draw the logo when it's loaded
     logo.onload = () => {
-      ctx.drawImage(logo, logoX, logoY, logoSize, logoSize)
+      if (ctx) {
+        ctx.drawImage(logo, logoX, logoY, logoSize, logoSize)
+      }
     }
 
     // Fallback if logo doesn't load
     logo.onerror = () => {
-      // Draw a simple "G" as fallback
-      ctx.font = `bold ${logoSize * 0.8}px Arial`
-      ctx.fillStyle = "#FFD700"
-      ctx.textAlign = "center"
-      ctx.textBaseline = "middle"
-      ctx.fillText("G", logoX + logoSize / 2, logoY + logoSize / 2)
+      if (ctx) {
+        // Draw a simple "G" as fallback
+        ctx.font = `bold ${logoSize * 0.8}px Arial`
+        ctx.fillStyle = "#FFD700"
+        ctx.textAlign = "center"
+        ctx.textBaseline = "middle"
+        ctx.fillText("G", logoX + logoSize / 2, logoY + logoSize / 2)
+      }
     }
   }
 
@@ -590,6 +603,10 @@ export default function AvatarCanvas({ options }: AvatarCanvasProps) {
       return `${(count / 1_000).toFixed(1)}K`
     }
     return count.toString()
+  }
+
+  if (!isMounted) {
+    return <div className="relative w-full aspect-square max-w-md mx-auto bg-black rounded-lg"></div>
   }
 
   return (

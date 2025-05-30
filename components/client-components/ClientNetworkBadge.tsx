@@ -2,7 +2,6 @@
 
 import { useEffect, useState } from "react"
 import { useNetwork } from "@/components/providers/NetworkContextProvider"
-import { isBrowser } from "@/utils/browser"
 
 export default function ClientNetworkBadge() {
   const { network } = useNetwork()
@@ -14,7 +13,7 @@ export default function ClientNetworkBadge() {
   }, [])
 
   // Don't render anything on server
-  if (!mounted || !isBrowser) {
+  if (!mounted) {
     return (
       <div className="flex items-center gap-2 bg-black/50 border border-amber-500/20 rounded-full px-3 py-1">
         <div className="h-2 w-2 rounded-full bg-gray-500"></div>

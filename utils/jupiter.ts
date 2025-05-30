@@ -18,7 +18,10 @@ interface QuoteParams {
 // Swap parameters
 interface SwapParams {
   connection: Connection
-  wallet: { publicKey: PublicKey }
+  wallet: {
+    publicKey: PublicKey
+    signTransaction?: (tx: Transaction | VersionedTransaction) => Promise<Transaction | VersionedTransaction>
+  }
   fromToken: Token
   toToken: Token
   quote: any
@@ -47,16 +50,11 @@ export async function getQuote(params: QuoteParams) {
     const response = await fetch(url.toString())
 
     if (!response.ok) {
-      throw new Error(`Jupiter API error: ${response.status} ${response.statusText}`)
+      const errorData = await response.json()
+      throw new Error(`Jupiter API error: ${JSON.stringify(errorData)}`)
     }
 
     const data = await response.json()
-
-    // Calculate outAmountWithSlippage
-    const outAmount = Number(data.outAmount)
-    const slippageAdjustment = outAmount * (params.slippageBps / 10000)
-    data.outAmountWithSlippage = (outAmount - slippageAdjustment).toString()
-
     return data
   } catch (error) {
     console.error("Error fetching quote:", error)
@@ -150,7 +148,7 @@ export async function executeSwap(
     } else {
       throw new Error("No swap transaction returned from Jupiter API")
     }
-  } catch (error) {
+  } catch (error: any) {
     console.error("Error executing swap:", error)
     return {
       success: false,
@@ -169,7 +167,7 @@ export async function getLiquidityPools(mintAddress?: string) {
       name: "GOLD-SOL",
       token1Info: {
         symbol: "GOLD",
-        logoURI: "/placeholder.svg?key=drkna",
+        logoURI: "/goldium-logo.png",
       },
       token2Info: {
         symbol: "SOL",
@@ -189,7 +187,7 @@ export async function getLiquidityPools(mintAddress?: string) {
       name: "GOLD-USDC",
       token1Info: {
         symbol: "GOLD",
-        logoURI: "/placeholder.svg?key=drkna",
+        logoURI: "/goldium-logo.png",
       },
       token2Info: {
         symbol: "USDC",
@@ -204,87 +202,45 @@ export async function getLiquidityPools(mintAddress?: string) {
         token2: 150000,
       },
     },
-  ]
-}
-
-// Get NFTs
-export async function getNFTs(walletAddress: string) {
-  // In a real implementation, you would fetch from Metaplex or another NFT API
-  // For now, we'll return mock data
-  return [
     {
-      id: "nft1",
-      name: "Golden Ticket #1",
-      collection: "Goldium Tickets",
-      image: "/placeholder.svg?key=nft1",
-      price: 10,
-      currency: "GOLD",
-      attributes: [
-        { trait_type: "Rarity", value: "Legendary" },
-        { trait_type: "Type", value: "Access" },
-      ],
-      description: "This NFT grants special access to Goldium premium features.",
+      id: "pool3",
+      name: "SOL-USDC",
+      token1Info: {
+        symbol: "SOL",
+        logoURI: "/solana-logo.png",
+      },
+      token2Info: {
+        symbol: "USDC",
+        logoURI: "/usdc-logo.png",
+      },
+      tvl: 3200000,
+      apy: 6.8,
+      volume24h: 950000,
+      fee: 0.3,
+      reserves: {
+        token1: 16000,
+        token2: 1600000,
+      },
     },
     {
-      id: "nft2",
-      name: "Gold Bar #42",
-      collection: "Goldium Collectibles",
-      image: "/placeholder.svg?key=nft2",
-      price: 5,
-      currency: "GOLD",
-      attributes: [
-        { trait_type: "Rarity", value: "Rare" },
-        { trait_type: "Type", value: "Collectible" },
-      ],
-      description: "A rare digital gold bar from the Goldium collection.",
-    },
-  ]
-}
-
-// Get staking rewards
-export async function getStakingRewards(walletAddress: string) {
-  // In a real implementation, you would fetch from your staking program
-  // For now, we'll return mock data
-  return [
-    {
-      token: "GOLD",
-      amount: "12.5",
+      id: "pool4",
+      name: "GOLD-BONK",
+      token1Info: {
+        symbol: "GOLD",
+        logoURI: "/goldium-logo.png",
+      },
+      token2Info: {
+        symbol: "BONK",
+        logoURI: "/bonk-token-logo.png",
+      },
+      tvl: 420000,
+      apy: 18.5,
+      volume24h: 125000,
+      fee: 0.3,
+      reserves: {
+        token1: 42000,
+        token2: 33600000000,
+      },
     },
   ]
-}
-
-// Add the missing getTokenPriceHistory function
-export async function getTokenPriceHistory(tokenAddress: string, timeframe = "7d") {
-  // This would normally fetch from an API, but for demo we'll return mock data
-  // In a real implementation, you would fetch from CoinGecko, CoinMarketCap, or a similar API
-
-  // Generate some realistic price data
-  const now = Date.now()
-  const oneDayMs = 24 * 60 * 60 * 1000
-  const dataPoints = timeframe === "24h" ? 24 : timeframe === "7d" ? 7 : 30
-  const basePrice = 2.5 // Base price in USD
-
-  const priceData = Array.from({ length: dataPoints }, (_, i) => {
-    // Create some random price fluctuation
-    const randomFactor = 0.9 + Math.random() * 0.2 // Random between 0.9 and 1.1
-    const timestamp = now - (dataPoints - i) * oneDayMs
-    const price = basePrice * randomFactor
-
-    return {
-      timestamp,
-      price,
-      volume: Math.floor(Math.random() * 1000000) + 500000, // Random volume between 500k and 1.5M
-    }
-  })
-
-  return {
-    tokenAddress,
-    timeframe,
-    data: priceData,
-    currentPrice: priceData[priceData.length - 1].price,
-    priceChange: {
-      percentage: ((priceData[priceData.length - 1].price - priceData[0].price) / priceData[0].price) * 100,
-      value: priceData[priceData.length - 1].price - priceData[0].price,
-    },
-  }
 }

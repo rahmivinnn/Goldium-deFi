@@ -1,110 +1,68 @@
 "use client"
 
 import { useState, useCallback } from "react"
-import { useConnection, useWallet } from "@solana/wallet-adapter-react"
-import {
-  Transaction,
-  type TransactionInstruction,
-  type PublicKey,
-  VersionedTransaction,
-  TransactionMessage,
-} from "@solana/web3.js"
+import { useWallet } from "@solana/wallet-adapter-react"
+import { type Connection, Transaction, type VersionedTransaction, type TransactionSignature } from "@solana/web3.js"
 import { useToast } from "@/components/ui/use-toast"
 
 interface TransactionOptions {
   onSuccess?: (signature: string) => void
   onError?: (error: Error) => void
-  confirmOptions?: {
-    maxRetries?: number
-    skipPreflight?: boolean
-  }
 }
 
-export function useTransaction() {
-  const { connection } = useConnection()
-  const { publicKey, sendTransaction, signTransaction, signAllTransactions } = useWallet()
+export function useTransaction(connection?: Connection) {
+  const { publicKey, signTransaction, signAllTransactions } = useWallet()
+  const [isProcessing, setIsProcessing] = useState(false)
   const { toast } = useToast()
-  const [isProcessing, setIsProcessing] = useState<boolean>(false)
-  const [signature, setSignature] = useState<string | null>(null)
-  const [error, setError] = useState<Error | null>(null)
 
-  const sendAndConfirmTransaction = useCallback(
-    async (transaction: Transaction | VersionedTransaction, options?: TransactionOptions) => {
-      if (!publicKey) {
-        const error = new Error("Wallet not connected")
-        setError(error)
-        options?.onError?.(error)
+  const sendTransaction = useCallback(
+    async (transaction: Transaction, options?: TransactionOptions) => {
+      if (!publicKey || !signTransaction) {
         toast({
-          title: "Error",
-          description: "Wallet not connected",
+          title: "Wallet not connected",
+          description: "Please connect your wallet to continue",
           variant: "destructive",
         })
         return null
       }
 
       setIsProcessing(true)
-      setError(null)
-      setSignature(null)
 
       try {
-        // Show toast for transaction initiation
-        const toastId = toast({
-          title: "Transaction Initiated",
-          description: "Please confirm the transaction in your wallet...",
-          duration: 10000,
-        })
+        // Add recent blockhash
+        if (!transaction.recentBlockhash) {
+          const { blockhash } = await connection!.getLatestBlockhash()
+          transaction.recentBlockhash = blockhash
+        }
 
-        let txSignature: string
-
-        if (transaction instanceof Transaction) {
-          // Legacy transaction
-          transaction.recentBlockhash = (await connection.getLatestBlockhash()).blockhash
+        // Set fee payer
+        if (!transaction.feePayer) {
           transaction.feePayer = publicKey
-
-          txSignature = await sendTransaction(transaction, connection, {
-            skipPreflight: options?.confirmOptions?.skipPreflight || false,
-          })
-        } else {
-          // Versioned transaction (v0)
-          txSignature = await sendTransaction(transaction, connection)
         }
 
-        setSignature(txSignature)
+        // Sign transaction
+        const signedTransaction = await signTransaction(transaction)
 
-        // Update toast for confirmation
-        toast({
-          id: toastId,
-          title: "Transaction Sent",
-          description: "Confirming transaction...",
-          duration: 5000,
-        })
+        // Send transaction
+        const signature = await connection!.sendRawTransaction(signedTransaction.serialize())
 
-        // Wait for confirmation
-        const confirmation = await connection.confirmTransaction(txSignature, "confirmed")
-
-        if (confirmation.value.err) {
-          throw new Error("Transaction confirmed but failed: " + confirmation.value.err.toString())
+        // Call onSuccess callback if provided
+        if (options?.onSuccess) {
+          options.onSuccess(signature)
         }
 
-        // Success toast
-        toast({
-          title: "Transaction Confirmed",
-          description: `Transaction successful!`,
-          variant: "default",
-        })
+        return signature
+      } catch (error: any) {
+        console.error("Transaction error:", error)
 
-        options?.onSuccess?.(txSignature)
-        return txSignature
-      } catch (err) {
-        console.error("Transaction error:", err)
-        const error = err instanceof Error ? err : new Error("Unknown transaction error")
-        setError(error)
-        options?.onError?.(error)
+        // Call onError callback if provided
+        if (options?.onError) {
+          options.onError(error)
+        }
 
-        // Error toast
         toast({
-          title: "Transaction Failed",
-          description: error.message,
+          title: "Transaction failed",
+          description: error.message || "Failed to send transaction",
           variant: "destructive",
         })
 
@@ -113,56 +71,127 @@ export function useTransaction() {
         setIsProcessing(false)
       }
     },
-    [publicKey, connection, sendTransaction, toast],
+    [publicKey, signTransaction, connection, toast],
   )
 
-  // Helper for creating and sending a versioned transaction (v0)
-  const sendVersionedTransaction = useCallback(
-    async (
-      instructions: TransactionInstruction[],
-      lookupTableAddresses: PublicKey[] = [],
-      options?: TransactionOptions,
-    ) => {
-      if (!publicKey) {
-        const error = new Error("Wallet not connected")
-        setError(error)
-        options?.onError?.(error)
+  const sendAndConfirmTransaction = useCallback(
+    async (transaction: Transaction | VersionedTransaction, options?: TransactionOptions) => {
+      if (!publicKey || !signTransaction) {
+        toast({
+          title: "Wallet not connected",
+          description: "Please connect your wallet to continue",
+          variant: "destructive",
+        })
+        return null
+      }
+
+      setIsProcessing(true)
+
+      try {
+        let signature: TransactionSignature
+
+        if (transaction instanceof Transaction) {
+          // Add recent blockhash if not already set
+          if (!transaction.recentBlockhash) {
+            const { blockhash } = await connection!.getLatestBlockhash()
+            transaction.recentBlockhash = blockhash
+          }
+
+          // Set fee payer if not already set
+          if (!transaction.feePayer) {
+            transaction.feePayer = publicKey
+          }
+
+          // Sign transaction
+          const signedTransaction = await signTransaction(transaction)
+
+          // Send transaction
+          signature = await connection!.sendRawTransaction(signedTransaction.serialize())
+        } else {
+          // For VersionedTransaction
+          const signedTransaction = await signTransaction(transaction)
+
+          // Send transaction
+          signature = await connection!.sendRawTransaction(signedTransaction.serialize())
+        }
+
+        // Confirm transaction
+        const confirmation = await connection!.confirmTransaction(signature, "confirmed")
+
+        if (confirmation.value.err) {
+          throw new Error(`Transaction failed: ${confirmation.value.err.toString()}`)
+        }
+
+        // Call onSuccess callback if provided
+        if (options?.onSuccess) {
+          options.onSuccess(signature)
+        }
+
+        return signature
+      } catch (error: any) {
+        console.error("Transaction error:", error)
+
+        // Call onError callback if provided
+        if (options?.onError) {
+          options.onError(error)
+        }
+
+        toast({
+          title: "Transaction failed",
+          description: error.message || "Failed to send transaction",
+          variant: "destructive",
+        })
+
+        return null
+      } finally {
+        setIsProcessing(false)
+      }
+    },
+    [publicKey, signTransaction, connection, toast],
+  )
+
+  const signTransactions = useCallback(
+    async (transactions: Transaction[]) => {
+      if (!publicKey || !signAllTransactions) {
+        toast({
+          title: "Wallet not connected",
+          description: "Please connect your wallet to continue",
+          variant: "destructive",
+        })
         return null
       }
 
       try {
-        const blockhash = await connection.getLatestBlockhash()
+        // Add recent blockhash and fee payer to all transactions
+        const { blockhash } = await connection!.getLatestBlockhash()
+        transactions.forEach((tx) => {
+          if (!tx.recentBlockhash) {
+            tx.recentBlockhash = blockhash
+          }
+          if (!tx.feePayer) {
+            tx.feePayer = publicKey
+          }
+        })
 
-        const messageV0 = new TransactionMessage({
-          payerKey: publicKey,
-          recentBlockhash: blockhash.blockhash,
-          instructions,
-        }).compileToV0Message(lookupTableAddresses)
-
-        const transaction = new VersionedTransaction(messageV0)
-
-        return sendAndConfirmTransaction(transaction, options)
-      } catch (err) {
-        console.error("Error creating versioned transaction:", err)
-        const error = err instanceof Error ? err : new Error("Failed to create transaction")
-        setError(error)
-        options?.onError?.(error)
+        // Sign all transactions
+        return await signAllTransactions(transactions)
+      } catch (error: any) {
+        console.error("Transaction signing error:", error)
+        toast({
+          title: "Signing failed",
+          description: error.message || "Failed to sign transactions",
+          variant: "destructive",
+        })
         return null
       }
     },
-    [publicKey, connection, sendAndConfirmTransaction],
+    [publicKey, signAllTransactions, connection, toast],
   )
 
   return {
+    sendTransaction,
     sendAndConfirmTransaction,
-    sendVersionedTransaction,
+    signTransactions,
     isProcessing,
-    signature,
-    error,
-    resetState: () => {
-      setIsProcessing(false)
-      setSignature(null)
-      setError(null)
-    },
   }
 }
